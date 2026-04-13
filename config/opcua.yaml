@@ -1,0 +1,88 @@
+# OPC UA Bundle Configuration Reference
+# =======================================
+#
+# Copy this file to config/packages/php_opcua_symfony_opcua.yaml
+# and adjust the values to your needs.
+
+php_opcua_symfony_opcua:
+
+    # The default connection name used when calling $opcuaManager->connection()
+    default: default
+
+    # Session Manager Daemon Configuration
+    # ------------------------------------
+    # The daemon keeps OPC UA connections alive across PHP requests,
+    # avoiding reconnection overhead. If the daemon is not running,
+    # the client falls back to direct connections (new TCP connection per request).
+    session_manager:
+        enabled: true
+        socket_path: '%kernel.project_dir%/var/opcua-session-manager.sock'
+        timeout: 600              # Session inactivity timeout in seconds
+        cleanup_interval: 30      # Cleanup check interval in seconds
+        auth_token: ~             # Optional shared secret for IPC authentication
+        max_sessions: 100         # Maximum concurrent sessions
+        socket_mode: 0600         # Socket file permissions (octal)
+        allowed_cert_dirs: ~      # Restrict certificate file paths (array of directories)
+        log_channel: ~            # Monolog channel name (null = default logger)
+        cache_pool: cache.app     # Symfony cache pool service ID (PSR-6)
+        auto_publish: false       # Auto-call publish() for sessions with active subscriptions
+
+    # Named Connections
+    # -----------------
+    # Define your OPC UA server connections here. Each connection can have
+    # its own endpoint, security settings, and credentials.
+    connections:
+        default:
+            endpoint: 'opc.tcp://localhost:4840'
+
+            # Security (optional)
+            # Policies: None, Basic128Rsa15, Basic256, Basic256Sha256,
+            #           Aes128Sha256RsaOaep, Aes256Sha256RsaPss,
+            #           ECC_nistP256, ECC_nistP384, ECC_brainpoolP256r1, ECC_brainpoolP384r1
+            security_policy: None
+            # Modes: None, Sign, SignAndEncrypt
+            security_mode: None
+
+            # User authentication (optional)
+            username: ~
+            password: ~
+
+            # Client certificate (optional - auto-generated if omitted when security is active)
+            client_certificate: ~
+            client_key: ~
+            ca_certificate: ~
+
+            # User certificate (optional)
+            user_certificate: ~
+            user_key: ~
+
+            # Client behaviour (optional)
+            timeout: 5.0            # Seconds
+            auto_retry: ~           # Reconnection attempts
+            batch_size: ~           # Max items per read/write batch
+            browse_max_depth: 10    # Recursive browse max depth
+
+            # Trust store (optional)
+            trust_store_path: ~
+            trust_policy: ~         # fingerprint, fingerprint+expiry, full
+            auto_accept: false      # Auto-accept unknown server certificates
+            auto_accept_force: false
+
+            # Write type auto-detection
+            auto_detect_write_type: true
+            # Read metadata cache
+            read_metadata_cache: false
+
+            # Auto-connect (optional)
+            # When true and auto_publish is enabled, the daemon connects
+            # to this endpoint on startup and registers the subscriptions below.
+            auto_connect: false
+
+            # Subscriptions (optional) - auto-registered when auto_connect is true
+            # subscriptions:
+            #     - publishing_interval: 500.0
+            #       max_keep_alive_count: 5
+            #       monitored_items:
+            #           - { node_id: 'ns=2;s=Temperature', client_handle: 1 }
+            #       event_monitored_items:
+            #           - { node_id: 'i=2253', client_handle: 10, select_fields: ['EventId', 'EventType', 'SourceName', 'Time', 'Message', 'Severity'] }
