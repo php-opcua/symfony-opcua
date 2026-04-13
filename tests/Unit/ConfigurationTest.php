@@ -228,7 +228,7 @@ describe('Configuration', function () {
                 'connections' => [
                     'default' => [],
                 ],
-            ]))->toThrow(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class);
+            ]))->toThrow(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class, 'must be configured');
         });
     });
 });
