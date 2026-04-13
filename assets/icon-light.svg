@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#444444" />
+      <stop offset="50%" stop-color="#1A1A1A" />
+      <stop offset="100%" stop-color="#000000" />
+    </linearGradient>
+    <linearGradient id="node" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#666666" />
+      <stop offset="100%" stop-color="#1A1A1A" />
+    </linearGradient>
+    <linearGradient id="line" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#444444" stop-opacity="0.6" />
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(16, 16)">
+    <!-- Connection lines -->
+    <line x1="60" y1="32" x2="80" y2="16" stroke="url(#line)" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="60" y1="56" x2="80" y2="72" stroke="url(#line)" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="28" y1="32" x2="8" y2="16" stroke="url(#line)" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="28" y1="56" x2="8" y2="72" stroke="url(#line)" stroke-width="2.5" stroke-linecap="round" />
+
+    <!-- Central ring -->
+    <circle cx="44" cy="44" r="22" fill="url(#brand)" />
+    <circle cx="44" cy="44" r="13" fill="white" />
+
+    <!-- Outer nodes -->
+    <circle cx="82" cy="14" r="7" fill="url(#node)" />
+    <circle cx="82" cy="74" r="7" fill="url(#node)" />
+    <circle cx="6" cy="14" r="7" fill="url(#node)" />
+    <circle cx="6" cy="74" r="7" fill="url(#node)" />
+
+    <!-- Symfony "Sf" monogram (centered at 44,44, inside ring) -->
+    <text x="44" y="50" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="16" font-weight="900" fill="url(#brand)" text-anchor="middle" letter-spacing="-0.5">Sf</text>
+  </g>
+</svg>

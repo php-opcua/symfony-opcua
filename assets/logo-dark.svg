@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 120" width="340" height="120">
+  <defs>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#CCCCCC" />
+      <stop offset="50%" stop-color="#E0E0E0" />
+      <stop offset="100%" stop-color="#FFFFFF" />
+    </linearGradient>
+    <linearGradient id="node" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#B0B0B0" />
+      <stop offset="100%" stop-color="#FFFFFF" />
+    </linearGradient>
+    <linearGradient id="line" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#CCCCCC" stop-opacity="0.6" />
+    </linearGradient>
+    <linearGradient id="badge1" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.08" />
+      <stop offset="100%" stop-color="#CCCCCC" stop-opacity="0.15" />
+    </linearGradient>
+    <linearGradient id="symfonyBadge" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#444444" />
+      <stop offset="100%" stop-color="#1A1A1A" />
+    </linearGradient>
+    <mask id="ringMask" maskContentUnits="userSpaceOnUse">
+      <rect x="-100" y="-100" width="500" height="500" fill="white" />
+      <circle cx="44" cy="44" r="12" fill="black" />
+    </mask>
+  </defs>
+
+  <g transform="translate(16, 16)">
+    <!-- Connection lines -->
+    <line x1="60" y1="32" x2="80" y2="16" stroke="url(#line)" stroke-width="2" stroke-linecap="round" />
+    <line x1="60" y1="56" x2="80" y2="72" stroke="url(#line)" stroke-width="2" stroke-linecap="round" />
+    <line x1="28" y1="32" x2="8" y2="16" stroke="url(#line)" stroke-width="2" stroke-linecap="round" />
+    <line x1="28" y1="56" x2="8" y2="72" stroke="url(#line)" stroke-width="2" stroke-linecap="round" />
+
+    <!-- Central ring (hollow) -->
+    <circle cx="44" cy="44" r="20" fill="url(#brand)" mask="url(#ringMask)" />
+
+    <!-- Outer nodes -->
+    <circle cx="82" cy="14" r="5.5" fill="url(#node)" />
+    <circle cx="82" cy="74" r="5.5" fill="url(#node)" />
+    <circle cx="6" cy="14" r="5.5" fill="url(#node)" />
+    <circle cx="6" cy="74" r="5.5" fill="url(#node)" />
+
+    <!-- Symfony "Sf" monogram (centered inside ring) -->
+    <text x="44" y="50" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="14" font-weight="900" fill="url(#brand)" text-anchor="middle" letter-spacing="-0.5">Sf</text>
+  </g>
+
+  <!-- OPC UA -->
+  <text x="120" y="50" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="38" font-weight="900" fill="url(#brand)" letter-spacing="-1.5">
+    OPC UA
+  </text>
+
+  <!-- Symfony Bundle -->
+  <text x="122" y="78" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="24" font-weight="800" fill="#B0B0B0" letter-spacing="0.5">
+    Symfony Bundle
+  </text>
+
+  <!-- Badge: php client -->
+  <rect x="120" y="92" width="82" height="18" rx="9" fill="url(#badge1)" />
+  <text x="161" y="104" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="9" font-weight="600" fill="#CCCCCC" text-anchor="middle" letter-spacing="1" opacity="0.7">
+    PHP CLIENT
+  </text>
+
+  <!-- Badge: bundle -->
+  <rect x="208" y="92" width="72" height="18" rx="9" fill="url(#symfonyBadge)" />
+  <text x="244" y="104" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="9" font-weight="700" fill="white" text-anchor="middle" letter-spacing="1">
+    BUNDLE
+  </text>
+</svg>
