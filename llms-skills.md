@@ -1,0 +1,1178 @@
+# OPC UA Symfony Bundle — AI Skills Reference
+
+> Task-oriented recipes for AI coding assistants. Feed this file to your AI (Claude, Cursor, Copilot, GPT, etc.) so it knows how to use `php-opcua/symfony-opcua` correctly.
+
+## How to use this file
+
+Add this file to your AI assistant's context:
+- **Claude Code**: reference per-session with `--add-file vendor/php-opcua/symfony-opcua/llms-skills.md`
+- **Cursor**: copy into your project's rules directory — `cp vendor/php-opcua/symfony-opcua/llms-skills.md .cursor/rules/symfony-opcua.md`
+- **GitHub Copilot**: copy or append the content into your project's `.github/copilot-instructions.md` file (create the file and directory if they don't exist). Copilot reads this file automatically for project-specific context
+- **Other tools**: paste the content into your system prompt, project knowledge base, or context configuration
+
+---
+
+## What This Package Does
+
+Symfony bundle for OPC UA. Wraps [`opcua-client`](https://github.com/php-opcua/opcua-client) and [`opcua-session-manager`](https://github.com/php-opcua/opcua-session-manager) with Symfony conventions: constructor injection, YAML-based configuration, named connections (like Doctrine), and a console command for the session manager daemon.
+
+**Key feature**: transparent session manager detection — if the daemon is running, connections persist across requests via `ManagedClient`; if not, direct `Client` connections are used. Zero code changes.
+
+---
+
+## Skill: Install and Configure
+
+### When to use
+The user wants to add OPC UA support to a Symfony application.
+
+### Install
+```bash
+composer require php-opcua/symfony-opcua
+```
+
+If Symfony Flex is not enabled, register the bundle manually:
+
+```php
+// config/bundles.php
+return [
+    // ...
+    PhpOpcua\SymfonyOpcua\PhpOpcuaSymfonyOpcuaBundle::class => ['all' => true],
+];
+```
+
+### Configure (YAML)
+
+Create `config/packages/php_opcua_symfony_opcua.yaml`:
+
+```yaml
+php_opcua_symfony_opcua:
+    default: default
+    connections:
+        default:
+            endpoint: '%env(OPCUA_ENDPOINT)%'
+```
+
+Set the environment variable (e.g. in `.env.local` or your deployment environment):
+
+```
+OPCUA_ENDPOINT=opc.tcp://192.168.1.100:4840
+```
+
+### Quick test
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\Routing\Attribute\Route;
+
+class TestController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/opcua/test')]
+    public function test(): JsonResponse
+    {
+        $client = $this->opcua->connect();
+        $value = $client->read('i=2259');
+        $client->disconnect();
+
+        return new JsonResponse(['server_state' => $value->getValue()]);
+    }
+}
+```
+
+### Important rules
+- `OpcuaManager` is the main entry point — inject it via constructor injection
+- `OpcUaClientInterface` can also be injected directly for the default connection
+- There is **no Facade** — always use constructor injection
+- Minimum config is just the `endpoint` for the default connection
+- Logger and cache are automatically injected from Symfony's service container
+
+---
+
+## Skill: Read Values
+
+### When to use
+The user wants to read process variables from PLCs, sensors, or any OPC UA server in a Symfony app.
+
+### Code
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+
+class SensorController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/sensors/read')]
+    public function read(): JsonResponse
+    {
+        $client = $this->opcua->connect();
+
+        // Single read
+        $dv = $client->read('i=2259');
+        echo $dv->getValue();       // scalar value
+        echo $dv->statusCode;       // 0 = Good
+
+        // Force fresh read (bypass metadata cache)
+        $dv = $client->read('i=2259', refresh: true);
+
+        // Multi read — fluent builder
+        $results = $client->readMulti()
+            ->node('i=2259')->value()
+            ->node('ns=2;i=1001')->displayName()
+            ->node('ns=2;s=Temperature')->value()
+            ->execute();
+
+        foreach ($results as $dv) {
+            echo $dv->getValue() . "\n";
+        }
+
+        // Multi read — array syntax
+        $results = $client->readMulti([
+            ['nodeId' => 'i=2259'],
+            ['nodeId' => 'ns=2;i=1001'],
+        ]);
+
+        $client->disconnect();
+
+        return new JsonResponse(['ok' => true]);
+    }
+}
+```
+
+### Important rules
+- All methods accept string NodeIds: `'i=2259'`, `'ns=2;i=1001'`, `'ns=2;s=Temperature'`
+- `getValue()` unwraps the OPC UA Variant and returns the PHP-native value
+- Check `$dv->statusCode` — `0` means Good, use `StatusCode::isGood($dv->statusCode)` for proper checking
+- `read($nodeId, refresh: true)` bypasses the metadata cache when `read_metadata_cache` is enabled
+
+---
+
+## Skill: Write Values
+
+### When to use
+The user wants to write setpoints, commands, or values to a PLC.
+
+### Code
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+use PhpOpcua\Client\Types\BuiltinType;
+use PhpOpcua\Client\Types\StatusCode;
+
+class WriteController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/plc/write')]
+    public function write(): JsonResponse
+    {
+        $client = $this->opcua->connect();
+
+        // Auto-detect type (default, recommended)
+        $status = $client->write('ns=2;i=1001', 42);
+
+        // Explicit type
+        $status = $client->write('ns=2;i=1001', 42, BuiltinType::Int32);
+
+        if (StatusCode::isGood($status)) {
+            echo 'Write successful';
+        }
+
+        // Multi write — fluent builder
+        $results = $client->writeMulti()
+            ->node('ns=2;i=1001')->int32(42)
+            ->node('ns=2;i=1002')->double(3.14)
+            ->node('ns=2;s=Label')->string('active')
+            ->execute();
+
+        $client->disconnect();
+
+        return new JsonResponse(['status' => 'ok']);
+    }
+}
+```
+
+### Important rules
+- Auto-detect (`write($nodeId, $value)` without type) reads the node's DataType first, caches it
+- `auto_detect_write_type` is `true` by default in config
+- Common types: `BuiltinType::Boolean`, `Int16`, `Int32`, `UInt32`, `Float`, `Double`, `String`
+
+---
+
+## Skill: Browse the Address Space
+
+### When to use
+The user wants to discover what's available on the server — nodes, variables, methods.
+
+### Code
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+use PhpOpcua\Client\Types\NodeClass;
+
+class BrowseController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/opcua/browse')]
+    public function browse(): JsonResponse
+    {
+        $client = $this->opcua->connect();
+
+        // Browse Objects folder
+        $refs = $client->browse('i=85');
+        foreach ($refs as $ref) {
+            echo "{$ref->displayName} ({$ref->nodeId}) [{$ref->nodeClass->name}]\n";
+        }
+
+        // Filter by node class
+        $refs = $client->browse('i=85', nodeClasses: [NodeClass::Variable]);
+
+        // Browse with cache control
+        $refs = $client->browse('i=85', useCache: false);
+
+        // Browse all (automatic continuation)
+        $allRefs = $client->browseAll('i=85');
+
+        // Recursive browse
+        $tree = $client->browseRecursive('i=85', maxDepth: 3);
+
+        // Resolve path to NodeId
+        $nodeId = $client->resolveNodeId('/Objects/Server/ServerStatus');
+        $value = $client->read($nodeId);
+
+        // Cache management
+        $client->invalidateCache('i=85');
+        $client->flushCache();
+
+        $client->disconnect();
+
+        return new JsonResponse(['ok' => true]);
+    }
+}
+```
+
+---
+
+## Skill: Use Named Connections
+
+### When to use
+The user has multiple OPC UA servers (PLCs, different production lines) and wants to connect to them by name.
+
+### Config (config/packages/php_opcua_symfony_opcua.yaml)
+```yaml
+php_opcua_symfony_opcua:
+    default: default
+    connections:
+        default:
+            endpoint: '%env(OPCUA_ENDPOINT)%'
+
+        plc-line-1:
+            endpoint: 'opc.tcp://10.0.0.10:4840'
+            username: '%env(PLC1_USER)%'
+            password: '%env(PLC1_PASS)%'
+
+        plc-line-2:
+            endpoint: 'opc.tcp://10.0.0.11:4840'
+            security_policy: Basic256Sha256
+            security_mode: SignAndEncrypt
+            client_certificate: '/etc/opcua/certs/client.pem'
+            client_key: '/etc/opcua/certs/client.key'
+```
+
+### Code
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+
+class PlcController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/plc/status')]
+    public function status(): JsonResponse
+    {
+        // Default connection
+        $client = $this->opcua->connect();
+
+        // Named connection
+        $plc1 = $this->opcua->connect('plc-line-1');
+        $plc2 = $this->opcua->connect('plc-line-2');
+
+        $temp1 = $plc1->read('ns=2;s=Temperature')->getValue();
+        $temp2 = $plc2->read('ns=2;s=Temperature')->getValue();
+
+        // Disconnect all
+        $this->opcua->disconnectAll();
+
+        return new JsonResponse([
+            'line1_temp' => $temp1,
+            'line2_temp' => $temp2,
+        ]);
+    }
+
+    #[Route('/plc/adhoc')]
+    public function adhoc(): JsonResponse
+    {
+        // Ad-hoc connection (not in config)
+        $client = $this->opcua->connectTo('opc.tcp://10.0.0.50:4840', [
+            'username' => 'operator',
+            'password' => 'secret',
+        ], as: 'temp-plc');
+
+        $value = $client->read('i=2259')->getValue();
+        $client->disconnect();
+
+        return new JsonResponse(['value' => $value]);
+    }
+}
+```
+
+### Important rules
+- Named connections work like Doctrine connections
+- `$opcua->connection('name')` returns the cached client (creates if needed)
+- `$opcua->connect('name')` connects and returns the client
+- `$opcua->connectTo()` creates ad-hoc connections not defined in config
+- `$opcua->disconnect('name')` disconnects one, `$opcua->disconnectAll()` disconnects all
+- Repeated calls to `connection('plc-1')` return the same cached instance
+- Use `%env(...)%` in YAML for environment-specific values
+
+---
+
+## Skill: Enable Session Manager for Persistent Connections
+
+### When to use
+The user wants to avoid the 50-200ms OPC UA handshake on every HTTP request.
+
+### Start daemon
+```bash
+php bin/console opcua:session
+php bin/console opcua:session --timeout=600 --max-sessions=100
+```
+
+### Configuration (config/packages/php_opcua_symfony_opcua.yaml)
+```yaml
+php_opcua_symfony_opcua:
+    session_manager:
+        enabled: true
+        socket_path: '%kernel.project_dir%/var/opcua-session-manager.sock'
+        timeout: 600
+        auth_token: '%env(OPCUA_AUTH_TOKEN)%'
+        max_sessions: 100
+        auto_publish: false
+```
+
+### Code — zero changes needed
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+
+class PlcController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/plc/status')]
+    public function status(): JsonResponse
+    {
+        // Same code as before — the switch is automatic
+        $client = $this->opcua->connect();
+        $value = $client->read('i=2259');
+        $client->disconnect();
+
+        // Check which mode is active
+        $mode = $this->opcua->isSessionManagerRunning()
+            ? 'Using persistent sessions (ManagedClient)'
+            : 'Using direct connections (Client)';
+
+        return new JsonResponse([
+            'value' => $value->getValue(),
+            'mode' => $mode,
+        ]);
+    }
+}
+```
+
+### systemd unit
+```ini
+# /etc/systemd/system/opcua-session-manager.service
+[Unit]
+Description=OPC UA Session Manager Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/path/to/symfony
+ExecStart=/usr/bin/php /path/to/symfony/bin/console opcua:session
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable opcua-session-manager
+sudo systemctl start opcua-session-manager
+sudo systemctl status opcua-session-manager
+```
+
+### Important rules
+- The `OpcuaManager` auto-detects the daemon by checking if the Unix socket file exists
+- If the socket exists, `ManagedClient` (persistent); if not, direct `Client` (per-request)
+- **Zero code changes** between the two modes
+- The console command `opcua:session` uses Symfony's logger and cache pool
+- Use systemd to keep the daemon running in production
+
+---
+
+## Skill: Call Methods on the Server
+
+### When to use
+The user wants to invoke OPC UA methods — trigger operations, run diagnostics.
+
+### Code
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+use PhpOpcua\Client\Types\Variant;
+use PhpOpcua\Client\Types\BuiltinType;
+use PhpOpcua\Client\Types\StatusCode;
+
+class MethodController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/plc/call')]
+    public function call(): JsonResponse
+    {
+        $client = $this->opcua->connect();
+
+        $result = $client->call(
+            'ns=2;i=100',   // parent object
+            'ns=2;i=200',   // method
+            [
+                new Variant(BuiltinType::Double, 3.0),
+                new Variant(BuiltinType::Double, 4.0),
+            ],
+        );
+
+        $client->disconnect();
+
+        if (StatusCode::isGood($result->statusCode)) {
+            return new JsonResponse(['result' => $result->outputArguments[0]->value]);
+        }
+
+        return new JsonResponse(['error' => 'Method call failed'], 500);
+    }
+}
+```
+
+---
+
+## Skill: Subscribe to Data Changes
+
+### When to use
+The user wants real-time monitoring of OPC UA variables.
+
+### Code
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+
+class SubscriptionController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/plc/subscribe')]
+    public function subscribe(): JsonResponse
+    {
+        $client = $this->opcua->connect();
+
+        $sub = $client->createSubscription(publishingInterval: 500.0);
+
+        $client->createMonitoredItems($sub->subscriptionId, [
+            ['nodeId' => 'ns=2;i=1001', 'clientHandle' => 1],
+            ['nodeId' => 'ns=2;i=1002', 'clientHandle' => 2],
+        ]);
+
+        // Poll for notifications
+        $response = $client->publish();
+        $data = [];
+        foreach ($response->notifications as $notif) {
+            $data[] = [
+                'handle' => $notif['clientHandle'],
+                'value' => $notif['dataValue']->getValue(),
+            ];
+        }
+
+        // Modify monitored items
+        $client->modifyMonitoredItems($sub->subscriptionId, [
+            ['monitoredItemId' => 1, 'samplingInterval' => 200.0],
+        ]);
+
+        // Set triggering — when item 1 changes, report items 2 and 3
+        $client->setTriggering($sub->subscriptionId, 1, [2, 3], []);
+
+        // Clean up
+        $client->deleteSubscription($sub->subscriptionId);
+        $client->disconnect();
+
+        return new JsonResponse(['notifications' => $data]);
+    }
+}
+```
+
+### Important rules
+- Subscriptions require polling (`publish()`) — OPC UA is not WebSocket
+- In plain Symfony (no daemon), subscriptions die with the request
+- With `php bin/console opcua:session` running, subscriptions persist across requests
+- Always `deleteSubscription()` when done
+- **Alternative:** use auto-publish (see next skill) to eliminate the manual `publish()` loop entirely
+
+---
+
+## Skill: Auto-Publish (Automatic Subscription Monitoring)
+
+### When to use
+The user wants OPC UA subscriptions monitored automatically by the daemon without a manual `publish()` loop. Notifications should be handled by Symfony event listeners.
+
+### Step 1: Enable auto-publish
+
+```yaml
+# config/packages/php_opcua_symfony_opcua.yaml
+php_opcua_symfony_opcua:
+    session_manager:
+        enabled: true
+        auto_publish: true
+```
+
+### Step 2: Define connections with auto-connect
+
+```yaml
+# config/packages/php_opcua_symfony_opcua.yaml
+php_opcua_symfony_opcua:
+    session_manager:
+        enabled: true
+        auto_publish: true
+
+    connections:
+        plc-1:
+            endpoint: '%env(PLC1_ENDPOINT)%'
+            username: '%env(PLC1_USER)%'
+            password: '%env(PLC1_PASS)%'
+            timeout: 3.0
+            auto_retry: 3
+            auto_connect: true
+            subscriptions:
+                - publishing_interval: 500.0
+                  max_keep_alive_count: 5
+                  monitored_items:
+                      - { node_id: 'ns=2;s=Temperature',  client_handle: 1 }
+                      - { node_id: 'ns=2;s=Pressure',     client_handle: 2 }
+                      - { node_id: 'ns=2;s=MachineState', client_handle: 3 }
+                  event_monitored_items:
+                      - node_id: 'i=2253'
+                        client_handle: 10
+                        select_fields:
+                            - EventId
+                            - EventType
+                            - SourceName
+                            - Time
+                            - Message
+                            - Severity
+                            - ActiveState
+
+        # On-demand connection — no auto_connect, no subscriptions
+        historian:
+            endpoint: '%env(HISTORIAN_ENDPOINT)%'
+```
+
+### Step 3: Register event listeners
+
+```php
+// src/EventListener/StoreSensorReading.php
+namespace App\EventListener;
+
+use Doctrine\DBAL\Connection;
+use PhpOpcua\Client\Event\DataChangeReceived;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+#[AsEventListener(event: DataChangeReceived::class)]
+class StoreSensorReading
+{
+    public function __construct(private readonly Connection $db) {}
+
+    public function __invoke(DataChangeReceived $event): void
+    {
+        $this->db->insert('sensor_readings', [
+            'subscription_id' => $event->subscriptionId,
+            'client_handle'   => $event->clientHandle,
+            'value'           => $event->dataValue->getValue(),
+            'status_code'     => $event->dataValue->statusCode,
+            'source_time'     => $event->dataValue->sourceTimestamp?->format('Y-m-d H:i:s.u'),
+            'server_time'     => $event->dataValue->serverTimestamp?->format('Y-m-d H:i:s.u'),
+            'created_at'      => (new \DateTimeImmutable())->format('Y-m-d H:i:s'),
+        ]);
+    }
+}
+```
+
+```php
+// src/EventListener/HandleAlarm.php
+namespace App\EventListener;
+
+use PhpOpcua\Client\Event\AlarmActivated;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+#[AsEventListener(event: AlarmActivated::class)]
+class HandleAlarm
+{
+    public function __construct(private readonly LoggerInterface $opcuaLogger) {}
+
+    public function __invoke(AlarmActivated $event): void
+    {
+        $this->opcuaLogger->warning('Alarm: {source} — {message}', [
+            'source'   => $event->sourceName,
+            'message'  => $event->message,
+            'severity' => $event->severity,
+        ]);
+    }
+}
+```
+
+### Step 4: Start
+
+```bash
+php bin/console opcua:session
+```
+
+### Runtime subscriptions
+
+Auto-publish also works for subscriptions created at runtime:
+
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+
+class RuntimeSubscriptionService
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    public function startMonitoring(): void
+    {
+        $sub = $this->opcua->connect('historian')->createSubscription(publishingInterval: 2000.0);
+        $this->opcua->connection('historian')->createMonitoredItems($sub->subscriptionId, [
+            ['nodeId' => 'ns=4;s=HistorianStatus', 'clientHandle' => 200],
+        ]);
+        // No publish() loop — daemon handles it automatically
+    }
+}
+```
+
+### Available events
+
+| Event | Properties |
+|-------|-----------|
+| `DataChangeReceived` | subscriptionId, sequenceNumber, clientHandle, dataValue |
+| `EventNotificationReceived` | subscriptionId, clientHandle, eventFields |
+| `AlarmActivated` | subscriptionId, clientHandle, sourceName, message, severity, eventType, time |
+| `AlarmDeactivated` | subscriptionId, clientHandle, sourceName, message |
+| `AlarmAcknowledged` | subscriptionId, clientHandle, sourceName |
+| `LimitAlarmExceeded` | subscriptionId, clientHandle, sourceName, limitState, severity |
+| `SubscriptionKeepAlive` | subscriptionId, sequenceNumber |
+| `PublishResponseReceived` | subscriptionId, sequenceNumber, notificationCount, moreNotifications |
+
+### Important rules
+- Auto-publish requires `auto_publish: true` in session_manager config
+- `auto_connect` is per-connection — only connections with `auto_connect: true` AND `subscriptions` defined are auto-connected
+- Connections without `auto_connect` are still available for imperative use
+- Manual `publish()` calls return an `auto_publish_active` error when auto-publish is active
+- `publish()` is blocking (max `maxKeepAliveCount x publishingInterval` ms) — use `max_keep_alive_count: 5` or lower
+- Connection errors trigger automatic recovery (reconnect + subscription transfer)
+- After 5 consecutive errors, auto-publish stops for that session
+- The daemon must be running (`php bin/console opcua:session`) for auto-publish to work
+
+---
+
+## Skill: Read Historical Data
+
+### When to use
+The user wants past values — trend analysis, logs, aggregated statistics.
+
+### Code
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+use PhpOpcua\Client\Types\NodeId;
+
+class HistoryController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/history')]
+    public function history(): JsonResponse
+    {
+        $client = $this->opcua->connect();
+
+        // Raw values
+        $history = $client->historyReadRaw(
+            'ns=2;i=1001',
+            new \DateTimeImmutable('-1 hour'),
+            new \DateTimeImmutable('now'),
+        );
+
+        $data = [];
+        foreach ($history as $dv) {
+            $data[] = [
+                'time' => $dv->sourceTimestamp->format('H:i:s'),
+                'value' => $dv->getValue(),
+            ];
+        }
+
+        // Aggregated (e.g., average over 1-minute intervals)
+        $history = $client->historyReadProcessed(
+            'ns=2;i=1001',
+            new \DateTimeImmutable('-1 hour'),
+            new \DateTimeImmutable('now'),
+            processingInterval: 60000.0,
+            aggregateType: NodeId::numeric(0, 2341), // Average
+        );
+
+        // Values at specific timestamps
+        $history = $client->historyReadAtTime('ns=2;i=1001', [
+            new \DateTimeImmutable('-30 minutes'),
+            new \DateTimeImmutable('now'),
+        ]);
+
+        $client->disconnect();
+
+        return new JsonResponse(['history' => $data]);
+    }
+}
+```
+
+---
+
+## Skill: Configure Security
+
+### When to use
+The user needs encrypted connections, authentication, or certificate trust management.
+
+### Config (config/packages/php_opcua_symfony_opcua.yaml)
+```yaml
+php_opcua_symfony_opcua:
+    connections:
+        secure-plc:
+            endpoint: 'opc.tcp://10.0.0.10:4840'
+            security_policy: Basic256Sha256
+            security_mode: SignAndEncrypt
+            username: '%env(OPCUA_USERNAME)%'
+            password: '%env(OPCUA_PASSWORD)%'
+            client_certificate: '/etc/opcua/certs/client.pem'
+            client_key: '/etc/opcua/certs/client.key'
+            ca_certificate: '/etc/opcua/certs/ca.pem'
+            trust_store_path: '/var/opcua/trust'
+            trust_policy: fingerprint
+            auto_accept: false
+```
+
+### Certificate trust at runtime
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+use PhpOpcua\Client\Exception\UntrustedCertificateException;
+
+class SecureController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/plc/secure')]
+    public function connect(): JsonResponse
+    {
+        try {
+            $client = $this->opcua->connect('secure-plc');
+        } catch (UntrustedCertificateException $e) {
+            $client = $this->opcua->connection('secure-plc');
+            $client->trustCertificate($e->getCertificate());
+            $client = $this->opcua->connect('secure-plc'); // retry
+        }
+
+        $value = $client->read('i=2259')->getValue();
+        $client->disconnect();
+
+        return new JsonResponse(['value' => $value]);
+    }
+}
+```
+
+### ECC security (no certificate needed)
+```yaml
+php_opcua_symfony_opcua:
+    connections:
+        ecc-plc:
+            endpoint: 'opc.tcp://10.0.0.10:4840'
+            security_policy: ECC_nistP256
+            security_mode: SignAndEncrypt
+            username: '%env(OPCUA_USERNAME)%'
+            password: '%env(OPCUA_PASSWORD)%'
+```
+
+ECC certificates are auto-generated when `client_certificate`/`client_key` are omitted. Username/password uses `EccEncryptedSecret` automatically.
+
+### Important rules
+- Security policies: `None`, `Basic128Rsa15`, `Basic256`, `Basic256Sha256`, `Aes128Sha256RsaOaep`, `Aes256Sha256RsaPss`, `ECC_nistP256`, `ECC_nistP384`, `ECC_brainpoolP256r1`, `ECC_brainpoolP384r1`
+- Security modes: `None`, `Sign`, `SignAndEncrypt`
+- Auth methods: anonymous (default), username/password, X.509 certificate
+- If `client_certificate`/`client_key` are omitted, a self-signed cert is auto-generated (RSA for RSA policies, ECC for ECC policies)
+- **ECC disclaimer:** No commercial OPC UA vendor supports ECC endpoints yet — tested against OPC Foundation's UA-.NETStandard only
+- Trust policies: `fingerprint`, `fingerprint+expiry`, `full`
+- Store secrets using `%env(...)%` in YAML, never hardcode them
+
+---
+
+## Skill: Test Without a Real Server
+
+### When to use
+The user wants to unit test Symfony code that uses `OpcuaManager`.
+
+### Code
+```php
+use PhpOpcua\Client\Testing\MockClient;
+use PhpOpcua\Client\Types\DataValue;
+use PhpOpcua\Client\Types\StatusCode;
+
+it('reads temperature from PLC', function () {
+    $mock = MockClient::create()
+        ->onRead('ns=2;s=Temperature', fn() => DataValue::ofDouble(23.5));
+
+    $value = $mock->read('ns=2;s=Temperature');
+
+    expect($value->getValue())->toBe(23.5);
+    expect($value->statusCode)->toBe(StatusCode::Good);
+    expect($mock->callCount('read'))->toBe(1);
+});
+```
+
+### DataValue factory methods
+```php
+DataValue::ofBoolean(true);
+DataValue::ofInt32(42);
+DataValue::ofUInt32(100);
+DataValue::ofDouble(3.14);
+DataValue::ofFloat(2.5);
+DataValue::ofString('hello');
+DataValue::of($value, BuiltinType::Int32);
+DataValue::bad(StatusCode::BadNodeIdUnknown);
+```
+
+### Inject into OpcuaManager
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+
+$mock = MockClient::create()
+    ->onRead('i=2259', fn() => DataValue::ofInt32(0));
+
+$manager = new OpcuaManager([
+    'default' => 'default',
+    'session_manager' => ['enabled' => false, 'socket_path' => '/tmp/nonexistent.sock'],
+    'connections' => ['default' => ['endpoint' => 'opc.tcp://localhost:4840']],
+]);
+
+$ref = new \ReflectionProperty($manager, 'connections');
+$ref->setValue($manager, ['default' => $mock]);
+
+$value = $manager->connection('default')->read('i=2259');
+echo $value->getValue(); // 0
+```
+
+### Important rules
+- `MockClient` implements `OpcUaClientInterface` — works as a drop-in replacement
+- Handlers: `onRead()`, `onWrite()`, `onBrowse()`, `onCall()`, `onResolveNodeId()`, `onGetEndpoints()`
+- Call tracking: `callCount($method)`, `getCalls()`, `getCallsFor($method)`, `resetCalls()`
+
+---
+
+## Skill: Use Dependency Injection
+
+### When to use
+The user wants to inject `OpcuaManager` into controllers, commands, or services.
+
+### OpcuaManager in a controller
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\Routing\Attribute\Route;
+
+class PlcController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/plc/status')]
+    public function status(): JsonResponse
+    {
+        $client = $this->opcua->connect();
+        $state = $client->read('i=2259')->getValue();
+        $client->disconnect();
+
+        return new JsonResponse([
+            'server_state' => $state,
+            'daemon_active' => $this->opcua->isSessionManagerRunning(),
+        ]);
+    }
+}
+```
+
+### OpcUaClientInterface for default connection
+```php
+use PhpOpcua\Client\OpcUaClientInterface;
+
+class PlcService
+{
+    public function __construct(private readonly OpcUaClientInterface $client) {}
+
+    public function getServerState(): int
+    {
+        return $this->client->read('i=2259')->getValue();
+    }
+}
+```
+
+### In a Symfony console command
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+
+#[AsCommand(name: 'app:plc-check')]
+class PlcCheckCommand extends Command
+{
+    public function __construct(private readonly OpcuaManager $opcua)
+    {
+        parent::__construct();
+    }
+
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $client = $this->opcua->connect();
+        $output->writeln('Server state: ' . $client->read('i=2259')->getValue());
+        $client->disconnect();
+
+        return Command::SUCCESS;
+    }
+}
+```
+
+### Important rules
+- `OpcuaManager` is registered as a public service (singleton)
+- `OpcUaClientInterface` is registered as a factory alias that calls `$opcuaManager->connection(null)` — it returns the default connection
+- Inject `OpcuaManager` when you need named connections or manager-level methods
+- Inject `OpcUaClientInterface` when you only need the default connection
+- There is no Facade and no `app()` helper — always use constructor injection
+
+---
+
+## Skill: Use PSR-14 Events
+
+### When to use
+The user wants to react to OPC UA operations — log reads, handle alarms, monitor connections.
+
+### Code
+```php
+// src/EventListener/LogOpcuaReads.php
+namespace App\EventListener;
+
+use PhpOpcua\Client\Event\AfterRead;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+#[AsEventListener(event: AfterRead::class)]
+class LogOpcuaReads
+{
+    public function __construct(private readonly LoggerInterface $logger) {}
+
+    public function __invoke(AfterRead $event): void
+    {
+        $this->logger->info('OPC UA read: {nodeId} = {value}', [
+            'nodeId' => $event->nodeId,
+            'value' => $event->dataValue->getValue(),
+        ]);
+    }
+}
+```
+
+```php
+// src/EventListener/HandleAlarm.php
+namespace App\EventListener;
+
+use PhpOpcua\Client\Event\AlarmActivated;
+use Psr\Log\LoggerInterface;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+#[AsEventListener(event: AlarmActivated::class)]
+class HandleAlarm
+{
+    public function __construct(private readonly LoggerInterface $logger) {}
+
+    public function __invoke(AlarmActivated $event): void
+    {
+        $this->logger->warning('Alarm: {source} — {message}', [
+            'source'   => $event->sourceName,
+            'message'  => $event->message,
+            'severity' => $event->severity,
+        ]);
+    }
+}
+```
+
+### Event categories
+
+Events span these categories:
+- **Connection**: connect, disconnect, reconnect
+- **Read/Write**: before/after read, before/after write
+- **Browse**: before/after browse
+- **Subscriptions**: data changes, events, keep-alive
+- **Method calls**: before/after call
+- **Alarms**: activated, deactivated, acknowledged, limit exceeded
+- **Trust store**: certificate trust decisions
+
+### Important rules
+- 47 event types: connection, read/write, browse, subscriptions, method calls, alarms, trust store, etc.
+- Zero overhead when no listeners are registered (`NullEventDispatcher`)
+- Events are readonly DTOs with a `$client` property
+- Symfony's `EventDispatcherInterface` is automatically injected into clients when available
+- Use `#[AsEventListener]` attribute — no need for an EventServiceProvider
+
+---
+
+## Configuration Reference
+
+### Connection keys (config/packages/php_opcua_symfony_opcua.yaml)
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `endpoint` | *(required)* | Server URL (e.g. `opc.tcp://localhost:4840`) |
+| `security_policy` | `None` | Security policy name |
+| `security_mode` | `None` | `None`, `Sign`, `SignAndEncrypt` |
+| `username` / `password` | `null` | Username/password auth |
+| `client_certificate` / `client_key` | `null` | Client cert (auto-generated if omitted) |
+| `ca_certificate` | `null` | CA certificate |
+| `user_certificate` / `user_key` | `null` | X.509 cert auth |
+| `timeout` | `5.0` | Network timeout (seconds) |
+| `auto_retry` | `null` | Max reconnection retries |
+| `batch_size` | `null` | Max items per batch |
+| `browse_max_depth` | `10` | Default `browseRecursive()` depth |
+| `trust_store_path` | `null` | Trust store directory |
+| `trust_policy` | `null` | `fingerprint`, `fingerprint+expiry`, `full` |
+| `auto_accept` | `false` | TOFU mode |
+| `auto_accept_force` | `false` | Force-accept changed certs |
+| `auto_detect_write_type` | `true` | Auto-detect on `write()` |
+| `read_metadata_cache` | `false` | Cache node metadata |
+| `auto_connect` | `false` | Auto-connect on daemon startup (requires `auto_publish`) |
+| `subscriptions` | — | Array of subscription definitions for auto-connect |
+
+### Session manager keys
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable daemon auto-detection |
+| `socket_path` | `%kernel.project_dir%/var/opcua-session-manager.sock` | Unix socket path |
+| `timeout` | `600` | Session inactivity timeout |
+| `cleanup_interval` | `30` | Cleanup check interval in seconds |
+| `auth_token` | `null` | Shared secret for IPC |
+| `max_sessions` | `100` | Max concurrent sessions |
+| `socket_mode` | `0600` | Socket file permissions (octal) |
+| `allowed_cert_dirs` | `[]` | Restrict certificate file paths |
+| `log_channel` | `null` | Monolog channel name (null = default logger) |
+| `cache_pool` | `cache.app` | Symfony cache pool service ID (PSR-6) |
+| `auto_publish` | `false` | Auto-publish for sessions with subscriptions |
+
+---
+
+## Common Mistakes to Avoid
+
+### 1. Forgetting to disconnect
+```php
+// WRONG — leaks connection
+$client = $this->opcua->connect();
+$value = $client->read('i=2259');
+return new JsonResponse(['value' => $value->getValue()]);
+
+// CORRECT
+$client = $this->opcua->connect();
+try {
+    $value = $client->read('i=2259');
+    return new JsonResponse(['value' => $value->getValue()]);
+} finally {
+    $client->disconnect();
+}
+```
+
+### 2. Confusing manager methods
+```php
+// connect() — returns a connected client
+$client = $this->opcua->connect('plc-1');
+
+// connection() — same as connect() in direct mode
+$client = $this->opcua->connection('plc-1');
+
+// connectTo() — ad-hoc endpoint not in config
+$client = $this->opcua->connectTo('opc.tcp://10.0.0.50:4840');
+
+// disconnect() vs disconnectAll()
+$this->opcua->disconnect('plc-1');   // one connection
+$this->opcua->disconnectAll();        // everything
+```
+
+### 3. Using old array access
+```php
+// WRONG — DTOs use public readonly properties, not arrays
+$sub = $client->createSubscription(500.0);
+echo $sub['subscriptionId'];
+
+// CORRECT
+echo $sub->subscriptionId;
+```
+
+### 4. Setting options after connect in direct mode
+```php
+// WRONG — Client is immutable after connection in direct mode
+$client = $this->opcua->connect();
+$client->setTimeout(10.0); // won't work
+
+// CORRECT — configure in YAML or use connectTo with inline config
+$client = $this->opcua->connectTo('opc.tcp://...', [
+    'timeout' => 10.0,
+]);
+```
+
+### 5. Using Laravel patterns in Symfony
+```php
+// WRONG — no Facade in Symfony
+$client = Opcua::connect();
+
+// WRONG — no app() helper
+$manager = app(OpcuaManager::class);
+
+// WRONG — no response()->json()
+return response()->json(['value' => $value]);
+
+// WRONG — no env() helper
+$endpoint = env('OPCUA_ENDPOINT');
+
+// CORRECT — constructor injection + JsonResponse
+class MyController extends AbstractController
+{
+    public function __construct(private readonly OpcuaManager $opcua) {}
+
+    #[Route('/data')]
+    public function data(): JsonResponse
+    {
+        $client = $this->opcua->connect();
+        $value = $client->read('i=2259')->getValue();
+        $client->disconnect();
+
+        return new JsonResponse(['value' => $value]);
+    }
+}
+```

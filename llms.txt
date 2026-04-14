@@ -1,0 +1,214 @@
+# OPC UA Symfony Bundle
+
+> Symfony integration for OPC UA built on opcua-client and opcua-session-manager. Provides dependency injection via autowiring, YAML-based configuration, named connections, and a console command for the session manager daemon.
+
+## Use Cases
+
+- Read and write process variables from PLCs, SCADA systems, sensors via injected OpcuaManager or OpcUaClientInterface
+- Browse OPC UA address spaces and resolve paths from Symfony controllers, services, or commands
+- Subscribe to data changes and events with session persistence across HTTP requests
+- Call methods on OPC UA servers from a Symfony application
+- Query historical data (raw, processed, at-time) from historians
+
+## Key Features
+
+- Dependency injection — autowire `OpcuaManager` or `OpcUaClientInterface` via constructor injection
+- Named connections — define multiple OPC UA servers in `config/packages/php_opcua_symfony_opcua.yaml`
+- Ad-hoc connections — `$opcuaManager->connectTo()` for runtime endpoints
+- Transparent session management — daemon available -> ManagedClient; not -> direct Client
+- String NodeIds everywhere — 'i=2259', 'ns=2;s=MyNode'
+- Fluent Builder API — readMulti(), writeMulti(), createMonitoredItems(), translateBrowsePaths()
+- PSR-3 Logging — Monolog channel injected automatically via `log_channel` config
+- PSR-14 Events — 47 dispatched events covering every OPC UA operation for observability
+- PSR-16 Caching — Psr16Cache wrapping Symfony PSR-6 cache pool, per-call useCache
+- Write auto-detection — omit the type parameter in write() and let the client detect the correct OPC UA type
+- Read metadata cache — cached node metadata avoids redundant reads; refresh with read($nodeId, refresh: true)
+- Trust store — FileTrustStore with configurable TrustPolicy, auto-accept, certificate management
+- Type Discovery — discoverDataTypes() for server-defined structured types
+- Auto-publish — daemon auto-publishes for sessions with subscriptions, dispatches PSR-14 events to Symfony listeners
+- Auto-connect — per-connection auto_connect with declarative subscriptions config, daemon sets up monitoring on startup
+- Subscription management — createMonitoredItems(), modifyMonitoredItems(), setTriggering(), transferSubscriptions()
+- MockClient for testing — register handlers, assert calls, no server needed
+- Timeout, auto-retry, automatic batching via config or fluent API
+- Recursive browsing with depth control and cycle detection
+- Path resolution — resolveNodeId('/Objects/Server/ServerStatus')
+- 10 security policies (RSA + ECC), 3 auth modes, auto-generated certificates, certificate trust management
+- Historical data — raw, processed, and at-time queries
+- All service responses return typed DTOs (SubscriptionResult, CallResult, BrowseResultSet, MonitoredItemModifyResult, SetTriggeringResult, ExtensionObject, etc.)
+
+## Installation
+
+```bash
+composer require php-opcua/symfony-opcua
+```
+
+If Symfony Flex is not enabled, register the bundle manually in `config/bundles.php`:
+
+```php
+return [
+    // ...
+    PhpOpcua\SymfonyOpcua\PhpOpcuaSymfonyOpcuaBundle::class => ['all' => true],
+];
+```
+
+## Quick Example
+
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+
+class PlcController
+{
+    public function __construct(
+        private readonly OpcuaManager $opcuaManager,
+    ) {}
+
+    public function status(): Response
+    {
+        $client = $this->opcuaManager->connect();
+        $value = $client->read('i=2259');
+        echo $value->getValue(); // 0 = Running
+        $client->disconnect();
+    }
+}
+```
+
+You can also autowire the default connection directly:
+
+```php
+use PhpOpcua\Client\OpcUaClientInterface;
+
+class SensorService
+{
+    public function __construct(
+        private readonly OpcUaClientInterface $client,
+    ) {}
+}
+```
+
+## Fluent Builder API
+
+```php
+$results = $client->readMulti()
+    ->node('i=2259')->value()
+    ->node('ns=2;i=1001')->displayName()
+    ->execute();
+```
+
+## Session Manager
+
+```bash
+php bin/console opcua:session --timeout=600 --max-sessions=100
+```
+
+## Main Classes
+
+- PhpOpcua\SymfonyOpcua\OpcuaManager — connection management, client creation, configuration
+- PhpOpcua\SymfonyOpcua\PhpOpcuaSymfonyOpcuaBundle — bundle registration, DI container configuration
+- PhpOpcua\SymfonyOpcua\Command\SessionCommand — console command for daemon
+
+## Configuration Keys
+
+Config file: `config/packages/php_opcua_symfony_opcua.yaml`
+
+```yaml
+php_opcua_symfony_opcua:
+    default: default
+    session_manager:
+        enabled: true
+        socket_path: '%kernel.project_dir%/var/opcua-session-manager.sock'
+        timeout: 600
+        cleanup_interval: 30
+        auth_token: ~
+        max_sessions: 100
+        socket_mode: 0600
+        allowed_cert_dirs: ~
+        log_channel: ~
+        cache_pool: cache.app
+        auto_publish: false
+    connections:
+        default:
+            endpoint: '%env(OPCUA_ENDPOINT)%'
+            security_policy: None
+            security_mode: None
+            username: ~
+            password: ~
+            client_certificate: ~
+            client_key: ~
+            ca_certificate: ~
+            user_certificate: ~
+            user_key: ~
+            timeout: 5.0
+            auto_retry: ~
+            batch_size: ~
+            browse_max_depth: 10
+            trust_store_path: ~
+            trust_policy: ~
+            auto_accept: false
+            auto_accept_force: false
+            auto_detect_write_type: true
+            read_metadata_cache: false
+            auto_connect: false
+            subscriptions: []
+```
+
+Standard: endpoint, security_policy, security_mode, username, password, client_certificate, client_key, ca_certificate, user_certificate, user_key, timeout, auto_retry, batch_size, browse_max_depth
+New in v4: trust_store_path, trust_policy, auto_accept, auto_accept_force, auto_detect_write_type, read_metadata_cache
+New in v4.0.1: auto_publish (session_manager), auto_connect (per-connection), subscriptions (per-connection)
+
+## Key Method Signatures
+
+- read(string|NodeId $nodeId, bool $refresh = false): DataValue
+- write(string|NodeId $nodeId, mixed $value, ?BuiltinType $type = null): int
+- modifyMonitoredItems(int $subscriptionId, array $itemsToModify): MonitoredItemModifyResult[]
+- setTriggering(int $subscriptionId, int $triggeringItemId, array $linksToAdd = [], array $linksToRemove = []): SetTriggeringResult
+- trustCertificate(string $certificate): void
+- untrustCertificate(string $certificate): void
+
+## OpcuaManager Methods
+
+- connection(?string $name = null): OpcUaClientInterface — get or create a named connection
+- connect(?string $name = null): OpcUaClientInterface — connect a named connection to its endpoint
+- connectTo(string $endpointUrl, array $config = [], ?string $as = null): OpcUaClientInterface — ad-hoc connection
+- disconnect(?string $name = null): void — disconnect a named connection
+- disconnectAll(): void — disconnect all connections
+- getDefaultConnection(): string — get the default connection name
+- isSessionManagerRunning(): bool — check if the daemon socket exists
+
+## Trust Store
+
+FileTrustStore manages trusted/rejected server certificates on disk. Configured via trust_store_path, trust_policy (TrustPolicy enum), auto_accept, and auto_accept_force. Methods: trustCertificate(), untrustCertificate(). Throws UntrustedCertificateException when a server certificate is not trusted.
+
+## PSR-14 Events
+
+47 events dispatched via Symfony's event dispatcher. Events cover: connection lifecycle, read/write, browse, subscriptions, method calls, history, discovery, trust store operations, and errors.
+
+## Exceptions
+
+- UntrustedCertificateException — server certificate not in the trust store
+- WriteTypeDetectionException — auto-detection of write type failed
+- WriteTypeMismatchException — detected type does not match the value
+
+## Related Packages
+
+- php-opcua/opcua-client — Pure PHP OPC UA client (core protocol)
+- php-opcua/opcua-session-manager — Daemon-based session persistence
+- php-opcua/laravel-opcua — Laravel integration (Facade, Artisan command)
+- php-opcua/opcua-cli — CLI tool for OPC UA operations
+- php-opcua/opcua-client-nodeset — Pre-generated PHP types from OPC Foundation companion specifications
+- php-opcua/uanetstandard-test-suite — Docker-based OPC UA test servers (UA-.NETStandard)
+
+## Requirements
+
+- PHP >= 8.2
+- ext-openssl
+- Symfony 7.3, 7.4, or 8.0+
+
+## License
+
+MIT
+
+## Links
+
+- Repository: https://github.com/php-opcua/symfony-opcua
+- Packagist: https://packagist.org/packages/php-opcua/symfony-opcua
+- Documentation: https://github.com/php-opcua/symfony-opcua/tree/master/doc

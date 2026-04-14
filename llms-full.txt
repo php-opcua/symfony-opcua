@@ -1,0 +1,563 @@
+# OPC UA Symfony Bundle — Full Reference
+
+> Symfony integration for OPC UA built on opcua-client and opcua-session-manager.
+
+## Package Metadata
+
+- Repository: https://github.com/php-opcua/symfony-opcua
+- Packagist: https://packagist.org/packages/php-opcua/symfony-opcua
+- License: MIT
+- PHP: >= 8.2
+- Symfony: 7.3, 7.4, 8.0+
+- Dependencies: php-opcua/opcua-client ^4.1.1, php-opcua/opcua-session-manager ^4.1, psr/event-dispatcher ^1.0, symfony/framework-bundle, symfony/console, symfony/dependency-injection, symfony/config, symfony/cache
+
+## Architecture
+
+OpcuaManager checks for the session manager daemon's Unix socket at connection time. If present, ManagedClient (daemon-proxied) is created. Otherwise, a direct Client via ClientBuilder::create()->...->connect() is used. The switch is transparent.
+
+```
+Controller/Service → $opcuaManager->connect()
+  ├── socket exists? → ManagedClient (IPC to daemon → TCP to OPC UA server)
+  └── socket missing? → ClientBuilder::create()->...->connect() (direct TCP to OPC UA server)
+```
+
+No Facade, no static access. Use dependency injection: type-hint `OpcuaManager` or `OpcUaClientInterface` in constructors, and Symfony's autowiring resolves them automatically.
+
+## Installation
+
+```bash
+composer require php-opcua/symfony-opcua
+```
+
+If Symfony Flex is enabled, the bundle is registered automatically. Otherwise, add to `config/bundles.php`:
+
+```php
+return [
+    // ...
+    PhpOpcua\SymfonyOpcua\PhpOpcuaSymfonyOpcuaBundle::class => ['all' => true],
+];
+```
+
+Copy the reference config to your project:
+
+```bash
+cp vendor/php-opcua/symfony-opcua/config/opcua.yaml config/packages/php_opcua_symfony_opcua.yaml
+```
+
+## Configuration (config/packages/php_opcua_symfony_opcua.yaml)
+
+Three sections: default connection name, session_manager, connections.
+
+```yaml
+php_opcua_symfony_opcua:
+    default: default
+    session_manager:
+        enabled: true
+        socket_path: '%kernel.project_dir%/var/opcua-session-manager.sock'
+        timeout: 600
+        cleanup_interval: 30
+        auth_token: '%env(OPCUA_AUTH_TOKEN)%'
+        max_sessions: 100
+        socket_mode: 0600
+        allowed_cert_dirs: []
+        log_channel: ~
+        cache_pool: cache.app
+        auto_publish: false
+    connections:
+        default:
+            endpoint: '%env(OPCUA_ENDPOINT)%'
+```
+
+### Session Manager Config
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| enabled | true | Enable daemon auto-detection |
+| socket_path | %kernel.project_dir%/var/opcua-session-manager.sock | Unix socket path |
+| timeout | 600 | Session inactivity timeout (seconds) |
+| cleanup_interval | 30 | Cleanup check interval |
+| auth_token | null | Shared secret for IPC |
+| max_sessions | 100 | Max concurrent sessions |
+| socket_mode | 0600 | Socket permissions |
+| allowed_cert_dirs | [] | Certificate directory whitelist |
+| log_channel | null | Monolog channel name (null = default logger; set to e.g. "opcua" to use monolog.logger.opcua) |
+| cache_pool | cache.app | Symfony PSR-6 cache pool service ID (wrapped in Psr16Cache internally) |
+| auto_publish | false | Auto-publish for sessions with subscriptions (dispatches PSR-14 events) |
+
+### Connection Config
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| endpoint | (required) | Server URL (e.g. opc.tcp://localhost:4840) |
+| security_policy | None | None, Basic128Rsa15, Basic256, Basic256Sha256, Aes128Sha256RsaOaep, Aes256Sha256RsaPss, ECC_nistP256, ECC_nistP384, ECC_brainpoolP256r1, ECC_brainpoolP384r1 |
+| security_mode | None | None, Sign, SignAndEncrypt |
+| username / password | null | User authentication |
+| client_certificate / client_key | null | Client cert (auto-generated if omitted) |
+| ca_certificate | null | CA for server validation |
+| user_certificate / user_key | null | X.509 auth |
+| timeout | 5.0 | Network timeout (seconds) |
+| auto_retry | null | Max reconnection retries |
+| batch_size | null | Max items per batch |
+| browse_max_depth | 10 | Default browseRecursive depth |
+| trust_store_path | null | Directory for trusted/rejected server certificates |
+| trust_policy | null | Trust policy: fingerprint, fingerprint+expiry, full |
+| auto_accept | false | Auto-accept unknown server certificates on first connection |
+| auto_accept_force | false | Force-accept even previously rejected certificates |
+| auto_detect_write_type | true | Enable auto-detection of write value types |
+| read_metadata_cache | false | Cache node metadata for read operations |
+| auto_connect | false | Auto-connect on daemon startup (requires auto_publish) |
+| subscriptions | [] | Array of subscription definitions with monitored_items and event_monitored_items |
+
+Environment variables in YAML use `%env(...)%` syntax:
+
+```yaml
+connections:
+    plc:
+        endpoint: '%env(OPCUA_PLC_ENDPOINT)%'
+        username: '%env(OPCUA_PLC_USER)%'
+        password: '%env(OPCUA_PLC_PASS)%'
+```
+
+## OpcuaManager API
+
+### Dependency Injection
+
+```php
+use PhpOpcua\SymfonyOpcua\OpcuaManager;
+
+class PlcService
+{
+    public function __construct(
+        private readonly OpcuaManager $opcuaManager,
+    ) {}
+
+    public function readTemperature(): float
+    {
+        $client = $this->opcuaManager->connect();
+        return $client->read('ns=2;s=Temperature')->getValue();
+    }
+}
+```
+
+Or type-hint `OpcUaClientInterface` directly to get the default connection:
+
+```php
+use PhpOpcua\Client\OpcUaClientInterface;
+
+class PlcService
+{
+    public function __construct(
+        private readonly OpcUaClientInterface $client,
+    ) {}
+}
+```
+
+The `OpcUaClientInterface` alias is a factory-based service definition that calls `$opcuaManager->connection(null)`, returning the default connection.
+
+### Connection Management
+
+- connection(?string $name = null): OpcUaClientInterface — get/cache client by name
+- connect(?string $name = null): OpcUaClientInterface — connect named connection
+- connectTo(string $endpointUrl, array $config = [], ?string $as = null): OpcUaClientInterface — ad-hoc
+- disconnect(?string $name = null): void — disconnect and remove from cache
+- disconnectAll(): void — disconnect all tracked connections
+- getDefaultConnection(): string — default connection name
+- isSessionManagerRunning(): bool — check if daemon socket exists
+
+### Proxied Methods (via __call to default connection)
+
+All OpcUaClientInterface methods are proxied: read, readMulti, write, writeMulti, browse, browseAll, browseRecursive, browseWithContinuation, browseNext, resolveNodeId, translateBrowsePaths, call, createSubscription, createMonitoredItems, createEventMonitoredItem, modifyMonitoredItems, setTriggering, deleteMonitoredItems, deleteSubscription, publish, transferSubscriptions, republish, historyReadRaw, historyReadProcessed, historyReadAtTime, getEndpoints, discoverDataTypes, trustCertificate, untrustCertificate, connect, disconnect, reconnect, isConnected, getConnectionState, getTimeout, getAutoRetry, getBatchSize, getServerMaxNodesPerRead, getServerMaxNodesPerWrite, getDefaultBrowseMaxDepth, getLogger, getCache, invalidateCache, flushCache, getExtensionObjectRepository.
+
+Note: In v4, OpcUaClientInterface no longer exposes setter methods (setTimeout, setAutoRetry, setBatchSize, setDefaultBrowseMaxDepth, setLogger, setCache). These are configured at build time via ClientBuilder or through the YAML config.
+
+## Bundle Class (PhpOpcuaSymfonyOpcuaBundle)
+
+The bundle extends Symfony's `AbstractBundle` and uses the modern `configure()` / `loadExtension()` approach (no XML/YAML service definitions).
+
+- Defines the full configuration tree via `DefinitionConfigurator`
+- Registers `OpcuaManager` as a public service with logger, PSR-16 cache (Psr16Cache wrapping the configured PSR-6 cache pool), and event dispatcher injected
+- Creates `opcua` alias pointing to `OpcuaManager`
+- Registers `OpcUaClientInterface` as a factory service (`$opcuaManager->connection(null)`) for autowiring
+- Registers `SessionCommand` with `console.command` tag
+- Resolves `log_channel` to `monolog.logger.<channel>` service (or `logger` if null)
+- Wraps the configured `cache_pool` (default `cache.app`) in `Symfony\Component\Cache\Psr16Cache`
+
+## SessionCommand (php bin/console opcua:session)
+
+Starts the OPC UA session manager daemon as a long-running console process.
+
+```bash
+php bin/console opcua:session
+php bin/console opcua:session --timeout=300 --max-sessions=50
+```
+
+Options: --timeout, --cleanup-interval, --max-sessions, --socket-mode
+
+All options override the corresponding `session_manager` YAML config values. The logger and cache are injected from the container at service registration time (no --log-channel or --cache-store CLI options).
+
+The command:
+1. Reads session_manager config merged with CLI option overrides
+2. Creates the socket directory if missing
+3. Displays a settings table (socket, timeout, cleanup interval, max sessions, socket mode, auth token, cert dirs, auto-publish status)
+4. Creates a `SessionManagerDaemon` with the resolved logger, cache, and event dispatcher
+5. If `auto_publish` is enabled, collects connections with `auto_connect: true` and calls `$daemon->autoConnect()`
+6. Runs the daemon event loop
+
+## Auto-Publish & Auto-Connect
+
+When `auto_publish: true` in session_manager config, the daemon automatically calls `publish()` for sessions with active subscriptions. The client's PSR-14 events (`DataChangeReceived`, `EventNotificationReceived`, `AlarmActivated`, etc.) are dispatched through Symfony's event dispatcher.
+
+Per-connection `auto_connect: true` with `subscriptions` config makes the daemon connect and register monitoring on startup:
+
+```yaml
+# config/packages/php_opcua_symfony_opcua.yaml
+php_opcua_symfony_opcua:
+    session_manager:
+        auto_publish: true
+    connections:
+        plc-1:
+            endpoint: 'opc.tcp://192.168.1.10:4840'
+            auto_connect: true
+            subscriptions:
+                - publishing_interval: 500.0
+                  max_keep_alive_count: 5
+                  monitored_items:
+                      - { node_id: 'ns=2;s=Temperature', client_handle: 1 }
+                  event_monitored_items:
+                      - { node_id: 'i=2253', client_handle: 10, select_fields: ['EventId', 'EventType', 'SourceName', 'Time', 'Message', 'Severity'] }
+```
+
+Listen for events using `#[AsEventListener]`:
+
+```php
+use PhpOpcua\Client\Event\DataChangeReceived;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+#[AsEventListener]
+class SensorReadingListener
+{
+    public function __invoke(DataChangeReceived $event): void
+    {
+        // Persist to database, trigger alerts, etc.
+        $clientHandle = $event->clientHandle;
+        $value = $event->dataValue->getValue();
+    }
+}
+```
+
+Or register via `services.yaml`:
+
+```yaml
+services:
+    App\EventListener\SensorReadingListener:
+        tags:
+            - { name: kernel.event_listener, event: PhpOpcua\Client\Event\DataChangeReceived }
+```
+
+Runtime subscriptions via OpcuaManager are also auto-published. Manual `publish()` is blocked while auto-publish is active (returns `auto_publish_active` error).
+
+## Reading Values
+
+```php
+$dv = $client->read('i=2259');
+echo $dv->getValue();     // scalar value
+echo $dv->statusCode;     // int (0 = Good)
+echo $dv->sourceTimestamp; // ?DateTimeImmutable
+
+// Force metadata refresh (bypasses read metadata cache)
+$dv = $client->read('i=2259', refresh: true);
+```
+
+Signature: `read(string|NodeId $nodeId, bool $refresh = false): DataValue`
+
+All methods accept string NodeIds: 'i=2259', 'ns=2;i=1001', 'ns=2;s=MyNode'.
+
+### readMulti — array or builder
+
+```php
+// Array
+$results = $client->readMulti([['nodeId' => 'i=2259']]);
+
+// Builder
+$results = $client->readMulti()->node('i=2259')->value()->execute();
+```
+
+## Writing Values
+
+```php
+$status = $client->write('ns=2;i=1001', 42, BuiltinType::Int32);
+
+// With auto-detection (type is nullable in v4)
+$status = $client->write('ns=2;i=1001', 42);
+```
+
+Signature: `write(string|NodeId $nodeId, mixed $value, ?BuiltinType $type = null): int`
+
+When `$type` is null and `auto_detect_write_type` is enabled (default), the client reads the node's data type metadata and selects the correct BuiltinType. Throws WriteTypeDetectionException on failure, WriteTypeMismatchException on mismatch.
+
+### writeMulti — array or builder
+
+```php
+$results = $client->writeMulti()->node('ns=2;i=1001')->int32(42)->execute();
+```
+
+## Browsing
+
+```php
+$refs = $client->browse('i=85'); // ReferenceDescription[]
+$refs = $client->browse('i=85', nodeClasses: [NodeClass::Variable]); // filter
+$refs = $client->browse('i=85', useCache: false); // skip cache
+$allRefs = $client->browseAll('i=85');
+$tree = $client->browseRecursive('i=85', maxDepth: 3); // BrowseNode[]
+$nodeId = $client->resolveNodeId('/Objects/Server/ServerStatus');
+```
+
+ReferenceDescription properties: nodeId, browseName, displayName, nodeClass, isForward, referenceTypeId, typeDefinition.
+BrowseNode properties: reference (ReferenceDescription), children (BrowseNode[]).
+
+## Method Calls
+
+```php
+$result = $client->call('i=85', 'ns=2;i=5000', [new Variant(BuiltinType::Double, 3.0)]);
+// CallResult: statusCode, inputArgumentResults, outputArguments
+```
+
+## Subscriptions
+
+```php
+$sub = $client->createSubscription(500.0);
+// SubscriptionResult: subscriptionId, revisedPublishingInterval, revisedLifetimeCount, revisedMaxKeepAliveCount
+
+$monitored = $client->createMonitoredItems($sub->subscriptionId, [...]);
+// MonitoredItemResult[]: statusCode, monitoredItemId, revisedSamplingInterval, revisedQueueSize
+
+$pub = $client->publish();
+// PublishResult: subscriptionId, sequenceNumber, moreNotifications, notifications, availableSequenceNumbers
+
+$client->deleteSubscription($sub->subscriptionId);
+
+// Modify monitored items
+$modifyResults = $client->modifyMonitoredItems($sub->subscriptionId, [
+    ['monitoredItemId' => $itemId, 'requestedParameters' => ['samplingInterval' => 200.0]],
+]);
+// MonitoredItemModifyResult[]: statusCode, revisedSamplingInterval, revisedQueueSize
+
+// Set triggering links between monitored items
+$triggerResult = $client->setTriggering($sub->subscriptionId, $triggeringItemId, linksToAdd: [$linkedItemId]);
+// SetTriggeringResult: addResults, removeResults
+
+// Session recovery
+$results = $client->transferSubscriptions([$subId]); // TransferResult[]
+$result = $client->republish($subId, $seqNum); // array
+```
+
+## History Read
+
+```php
+$values = $client->historyReadRaw('ns=2;i=1001', $start, $end); // DataValue[]
+$values = $client->historyReadProcessed('ns=2;i=1001', $start, $end, 60000.0, $aggregateType);
+$values = $client->historyReadAtTime('ns=2;i=1001', [$t1, $t2, $t3]);
+```
+
+## Trust Store
+
+FileTrustStore manages trusted and rejected server certificates on disk.
+
+```yaml
+# config/packages/php_opcua_symfony_opcua.yaml
+php_opcua_symfony_opcua:
+    connections:
+        default:
+            trust_store_path: '%kernel.project_dir%/var/opcua-trust-store'
+            trust_policy: fingerprint
+            auto_accept: false
+            auto_accept_force: false
+```
+
+```php
+// Manually trust/untrust a certificate
+$client->trustCertificate($derEncodedCert);
+$client->untrustCertificate($derEncodedCert);
+```
+
+TrustPolicy values: fingerprint, fingerprint+expiry, full.
+
+Throws UntrustedCertificateException when a server presents a certificate not in the trust store under strict policy.
+
+## PSR-14 Events
+
+47 events dispatched via Symfony's event dispatcher, covering:
+- Connection lifecycle (connecting, connected, disconnecting, disconnected, reconnecting)
+- Read/write operations (reading, read, writing, written)
+- Browse operations (browsing, browsed)
+- Subscriptions (creating, created, deleting, deleted, publishing, published)
+- Monitored items (creating, created, modifying, modified, deleting, deleted, triggering, triggered)
+- Method calls (calling, called)
+- History reads (reading, read)
+- Discovery (discovering, discovered)
+- Trust store (trusting, trusted, untrusting, untrusted)
+- Errors (operation-specific error events)
+
+All events are immutable DTOs. Register listeners via `#[AsEventListener]` attribute:
+
+```php
+use PhpOpcua\Client\Event\Connected;
+use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+
+#[AsEventListener]
+class OpcuaConnectionListener
+{
+    public function __invoke(Connected $event): void
+    {
+        // Handle connection established
+    }
+}
+```
+
+Or via `services.yaml` tag:
+
+```yaml
+services:
+    App\EventListener\OpcuaConnectionListener:
+        tags:
+            - { name: kernel.event_listener, event: PhpOpcua\Client\Event\Connected }
+```
+
+## Exceptions
+
+- UntrustedCertificateException — server certificate is not trusted by the trust store
+- WriteTypeDetectionException — auto-detection of the write value type failed (node metadata unreadable)
+- WriteTypeMismatchException — the detected data type does not match the provided PHP value
+
+## Cache
+
+```php
+$client->invalidateCache('i=85');          // clear one node
+$client->flushCache();                     // clear all
+$client->browse('i=85', useCache: false);  // skip per-call
+```
+
+The bundle wraps the configured Symfony PSR-6 cache pool (default `cache.app`) in `Symfony\Component\Cache\Psr16Cache` and injects it into OpcuaManager. The `read_metadata_cache` config key controls whether node metadata is cached for read operations.
+
+To use a dedicated cache pool, define one in your cache config:
+
+```yaml
+# config/packages/cache.yaml
+framework:
+    cache:
+        pools:
+            opcua.cache:
+                adapter: cache.adapter.filesystem
+
+# config/packages/php_opcua_symfony_opcua.yaml
+php_opcua_symfony_opcua:
+    session_manager:
+        cache_pool: opcua.cache
+```
+
+## Logging
+
+```php
+$client->getLogger(); // current logger (PSR-3)
+```
+
+The bundle injects the Symfony logger automatically. When `log_channel` is set (e.g. "opcua"), the bundle resolves `monolog.logger.opcua` as the logger service. When null, the default `logger` service is used.
+
+Configure a dedicated Monolog channel:
+
+```yaml
+# config/packages/monolog.yaml
+monolog:
+    channels:
+        - opcua
+    handlers:
+        opcua:
+            type: rotating_file
+            path: '%kernel.logs_dir%/opcua.log'
+            channels: [opcua]
+
+# config/packages/php_opcua_symfony_opcua.yaml
+php_opcua_symfony_opcua:
+    session_manager:
+        log_channel: opcua
+```
+
+In v4, the logger is configured at build time via ClientBuilder (no runtime setLogger on the interface).
+
+## Type Discovery
+
+```php
+$count = $client->discoverDataTypes(); // int
+$count = $client->discoverDataTypes(namespaceIndex: 2);
+$repo = $client->getExtensionObjectRepository();
+```
+
+## Security
+
+10 policies: None, Basic128Rsa15, Basic256, Basic256Sha256, Aes128Sha256RsaOaep, Aes256Sha256RsaPss, ECC_nistP256, ECC_nistP384, ECC_brainpoolP256r1, ECC_brainpoolP384r1.
+3 modes: None, Sign, SignAndEncrypt.
+3 auth methods: Anonymous, Username/Password, X.509 Certificate.
+Auto-generated client certificates when policy/mode set but no cert provided (RSA 2048 for RSA policies, EC matching curve for ECC policies).
+Certificate trust management via FileTrustStore with configurable TrustPolicy.
+
+## MockClient (Testing)
+
+```php
+use PhpOpcua\Client\Testing\MockClient;
+use PhpOpcua\Client\DataValue;
+
+$mock = MockClient::create()
+    ->onRead('i=2259', fn() => DataValue::ofInt32(0));
+
+$mock->read('i=2259');
+echo $mock->callCount('read'); // 1
+```
+
+DataValue factories: ofBoolean, ofInt32, ofUInt32, ofInt16, ofUInt16, ofDouble, ofFloat, ofString, of, bad.
+
+In Symfony tests, override the service in your test container:
+
+```php
+// tests/Integration/SomeTest.php
+use PhpOpcua\Client\OpcUaClientInterface;
+use PhpOpcua\Client\Testing\MockClient;
+
+$mock = MockClient::create()
+    ->onRead('ns=2;s=Temperature', fn() => DataValue::ofDouble(23.5));
+
+self::getContainer()->set(OpcUaClientInterface::class, $mock);
+
+// Now any service that injects OpcUaClientInterface will use the mock
+```
+
+## Result DTOs
+
+- SubscriptionResult: subscriptionId, revisedPublishingInterval, revisedLifetimeCount, revisedMaxKeepAliveCount
+- MonitoredItemResult: statusCode, monitoredItemId, revisedSamplingInterval, revisedQueueSize
+- MonitoredItemModifyResult: statusCode, revisedSamplingInterval, revisedQueueSize
+- SetTriggeringResult: addResults, removeResults
+- CallResult: statusCode, inputArgumentResults, outputArguments
+- BrowseResultSet: references, continuationPoint
+- PublishResult: subscriptionId, sequenceNumber, moreNotifications, notifications, availableSequenceNumbers
+- BrowsePathResult: statusCode, targets
+- BrowsePathTarget: targetId, remainingPathIndex
+- TransferResult: statusCode, availableSequenceNumbers
+- ExtensionObject: typeId, body (for server-defined structured types)
+
+## Related Packages
+
+- php-opcua/opcua-client — Pure PHP OPC UA client (core protocol)
+- php-opcua/opcua-session-manager — Daemon-based session persistence
+- php-opcua/laravel-opcua — Laravel integration (Facade-based)
+- php-opcua/opcua-cli — CLI tool for OPC UA operations
+- php-opcua/opcua-client-nodeset — Pre-generated PHP types from OPC Foundation companion specifications
+- php-opcua/uanetstandard-test-suite — Docker-based OPC UA test servers (UA-.NETStandard)
+
+## Testing
+
+3 unit test files (OpcuaManagerTest, SessionCommandTest, BundleTest, ConfigurationTest), 8 integration test files. Uses Pest PHP. Integration tests require uanetstandard-test-suite Docker containers.
+
+```bash
+./vendor/bin/pest tests/Unit/
+./vendor/bin/pest tests/Integration/ --group=integration
+```
