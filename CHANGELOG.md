@@ -1,5 +1,27 @@
 # Changelog
 
+## [4.2.0] - 2026-04-17
+
+### Changed
+
+- Bumped `php-opcua/opcua-client` from `^4.1.1` to `^4.2.0` and `php-opcua/opcua-session-manager` from `^4.1` to `^4.2.0`. Picks up the Kernel + ServiceModule architecture, the Wire-serialization pipeline, the describe/invoke IPC commands that make third-party modules reachable through `ManagedClient::__call()`, and the cross-platform IPC transport (Unix socket on Linux/macOS, TCP loopback on Windows).
+
+### Added
+
+- **Cross-platform session manager out of the box.** `php_opcua_symfony_opcua.session_manager.socket_path` now accepts:
+  - `unix://<path>` (explicit Unix-domain socket)
+  - `tcp://127.0.0.1:<port>` (loopback-only — non-loopback hosts are refused by `TcpLoopbackTransport` on the client and by `SessionManagerDaemon` on the daemon)
+  - scheme-less path (interpreted as `unix://<path>`, backwards-compatible with pre-v4.2.0 configs)
+
+  `OpcuaManager::isSessionManagerRunning()` and `OpcuaManager::shouldUseSessionManager()` now inspect the endpoint URI via `TransportFactory::toUnixPath()` — for Unix endpoints they keep the historical `file_exists()` check; TCP endpoints can't be filesystem-probed, so presence is assumed (a missing daemon surfaces as a clear `DaemonException` on the first IPC call).
+- **`php bin/console opcua:session` reflects the endpoint kind.** The startup table shows "Endpoint" instead of "Socket", and the "Socket Mode" row is only printed for Unix-socket endpoints. The parent-directory `mkdir` is skipped for TCP endpoints.
+
+### Tests / CI
+
+- CI workflow aligned with `opcua-client` / `opcua-session-manager`: `unit` job cross-OS on `ubuntu-latest` / `macos-latest` / `windows-latest` × PHP 8.2–8.5 × Symfony 7.3 / 7.4 / 8.0 (with the existing exclusion matrix); `integration` job stays Ubuntu-only (Docker-hosted OPC UA servers) with `needs: unit` gating. `[DOC]` commits skip CI. `codecov/codecov-action` bumped from `v5` to `v6`.
+- Unit tests (`tests/Unit/`) are fully cross-OS. Integration tests (`tests/Integration/`) remain Docker-dependent and run only in the integration job.
+- Full suite: **244 passing, 0 failing** on Linux.
+
 ## [4.1.0] - 2026-04-14
 
 ### Added

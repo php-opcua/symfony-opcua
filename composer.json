@@ -11,8 +11,8 @@
     ],
     "require": {
         "php": "^8.2",
-        "php-opcua/opcua-client": "^4.1.1",
-        "php-opcua/opcua-session-manager": "^4.1",
+        "php-opcua/opcua-client": "^4.2.0",
+        "php-opcua/opcua-session-manager": "^4.2.0",
         "psr/event-dispatcher": "^1.0",
         "symfony/framework-bundle": "^7.3|^8.0",
         "symfony/console": "^7.3|^8.0",

@@ -13,7 +13,7 @@
 
 ## Architecture
 
-OpcuaManager checks for the session manager daemon's Unix socket at connection time. If present, ManagedClient (daemon-proxied) is created. Otherwise, a direct Client via ClientBuilder::create()->...->connect() is used. The switch is transparent.
+OpcuaManager checks for the session manager daemon's IPC endpoint at connection time. If present, ManagedClient (daemon-proxied) is created. Otherwise, a direct Client via ClientBuilder::create()->...->connect() is used. The switch is transparent. The IPC endpoint is auto-selected per platform via PhpOpcua\SessionManager\Ipc\TransportFactory: Unix-domain socket on Linux/macOS (detected with file_exists), TCP loopback on Windows (presence assumed — first IPC call surfaces DaemonException if daemon not running).
 
 ```
 Controller/Service → $opcuaManager->connect()
@@ -73,7 +73,7 @@ php_opcua_symfony_opcua:
 | Key | Default | Description |
 |-----|---------|-------------|
 | enabled | true | Enable daemon auto-detection |
-| socket_path | %kernel.project_dir%/var/opcua-session-manager.sock | Unix socket path |
+| socket_path | %kernel.project_dir%/var/opcua-session-manager.sock (Linux/macOS) — set to tcp://127.0.0.1:9990 on Windows | IPC endpoint URI: unix://<path>, tcp://127.0.0.1:<port> (loopback-only), or scheme-less path (= unix://<path>, BC with pre-v4.2.0 configs) |
 | timeout | 600 | Session inactivity timeout (seconds) |
 | cleanup_interval | 30 | Cleanup check interval |
 | auth_token | null | Shared secret for IPC |

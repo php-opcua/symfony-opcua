@@ -7,6 +7,7 @@ namespace PhpOpcua\SymfonyOpcua\Command;
 use PhpOpcua\Client\Security\SecurityMode;
 use PhpOpcua\Client\Security\SecurityPolicy;
 use PhpOpcua\SessionManager\Daemon\SessionManagerDaemon;
+use PhpOpcua\SessionManager\Ipc\TransportFactory;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
@@ -79,25 +80,29 @@ class SessionCommand extends Command
         $autoPublish = (bool) ($config['auto_publish'] ?? false);
         $eventDispatcher = $autoPublish ? $this->eventDispatcher : null;
 
-        $socketDir = dirname($socketPath);
-        if (!is_dir($socketDir)) {
-            mkdir($socketDir, 0755, true);
+        $unixPath = TransportFactory::toUnixPath($socketPath);
+        if ($unixPath !== null) {
+            $socketDir = dirname($unixPath);
+            if (!is_dir($socketDir)) {
+                mkdir($socketDir, 0755, true);
+            }
         }
 
         $io->info('Starting OPC UA Session Manager...');
-        $io->table(
-            ['Setting', 'Value'],
-            [
-                ['Socket', $socketPath],
-                ['Timeout', $timeout . 's'],
-                ['Cleanup Interval', $cleanupInterval . 's'],
-                ['Max Sessions', (string) $maxSessions],
-                ['Socket Mode', sprintf('0%o', $socketMode)],
-                ['Auth Token', $authToken ? 'configured' : 'none'],
-                ['Cert Dirs', $allowedCertDirs ? implode(', ', $allowedCertDirs) : 'any'],
-                ['Auto-publish', $autoPublish ? 'enabled' : 'disabled'],
-            ],
-        );
+
+        $settings = [
+            ['Endpoint', $socketPath],
+            ['Timeout', $timeout . 's'],
+            ['Cleanup Interval', $cleanupInterval . 's'],
+            ['Max Sessions', (string) $maxSessions],
+        ];
+        if ($unixPath !== null) {
+            $settings[] = ['Socket Mode', sprintf('0%o', $socketMode)];
+        }
+        $settings[] = ['Auth Token', $authToken ? 'configured' : 'none'];
+        $settings[] = ['Cert Dirs', $allowedCertDirs ? implode(', ', $allowedCertDirs) : 'any'];
+        $settings[] = ['Auto-publish', $autoPublish ? 'enabled' : 'disabled'];
+        $io->table(['Setting', 'Value'], $settings);
 
         $daemon = $this->createDaemon(
             socketPath: $socketPath,

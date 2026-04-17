@@ -16,12 +16,18 @@ php_opcua_symfony_opcua:
     # the client falls back to direct connections (new TCP connection per request).
     session_manager:
         enabled: true
+        # IPC endpoint URI. Accepts:
+        #   - unix://<absolute/path.sock>
+        #   - tcp://127.0.0.1:<port>  (loopback-only — non-loopback hosts are refused)
+        #   - scheme-less path        (interpreted as unix://<path>, backwards-compatible)
+        # Scheme-less default below is auto-detected as Unix-domain on Linux/macOS;
+        # for Windows deployments set this to e.g. 'tcp://127.0.0.1:9990'.
         socket_path: '%kernel.project_dir%/var/opcua-session-manager.sock'
         timeout: 600              # Session inactivity timeout in seconds
         cleanup_interval: 30      # Cleanup check interval in seconds
         auth_token: ~             # Optional shared secret for IPC authentication
         max_sessions: 100         # Maximum concurrent sessions
-        socket_mode: 0600         # Socket file permissions (octal)
+        socket_mode: 0600         # Socket file permissions (octal). Ignored for tcp:// endpoints.
         allowed_cert_dirs: ~      # Restrict certificate file paths (array of directories)
         log_channel: ~            # Monolog channel name (null = default logger)
         cache_pool: cache.app     # Symfony cache pool service ID (PSR-6)

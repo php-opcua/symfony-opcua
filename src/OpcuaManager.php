@@ -12,6 +12,7 @@ use PhpOpcua\Client\Security\SecurityPolicy;
 use PhpOpcua\Client\TrustStore\FileTrustStore;
 use PhpOpcua\Client\TrustStore\TrustPolicy;
 use PhpOpcua\SessionManager\Client\ManagedClient;
+use PhpOpcua\SessionManager\Ipc\TransportFactory;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
@@ -139,13 +140,18 @@ class OpcuaManager
             return false;
         }
 
-        $socketPath = $smConfig['socket_path'] ?? null;
+        $endpoint = $smConfig['socket_path'] ?? null;
 
-        if ($socketPath === null) {
+        if ($endpoint === null) {
             return false;
         }
 
-        return file_exists($socketPath);
+        $unixPath = TransportFactory::toUnixPath($endpoint);
+        if ($unixPath !== null) {
+            return file_exists($unixPath);
+        }
+
+        return true;
     }
 
     /**
@@ -494,9 +500,17 @@ class OpcuaManager
      */
     public function isSessionManagerRunning(): bool
     {
-        $socketPath = $this->config['session_manager']['socket_path'] ?? null;
+        $endpoint = $this->config['session_manager']['socket_path'] ?? null;
+        if ($endpoint === null) {
+            return false;
+        }
 
-        return $socketPath !== null && file_exists($socketPath);
+        $unixPath = TransportFactory::toUnixPath($endpoint);
+        if ($unixPath !== null) {
+            return file_exists($unixPath);
+        }
+
+        return true;
     }
 
     /**

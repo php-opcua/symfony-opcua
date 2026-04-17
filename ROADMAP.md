@@ -1,5 +1,12 @@
 # Roadmap
 
+## v4.2.0 — 2026-04-17
+
+- [x] Bumped `php-opcua/opcua-client` to `^4.2.0` and `php-opcua/opcua-session-manager` to `^4.2.0`.
+- [x] **Cross-OS session manager IPC** — `session_manager.socket_path` accepts `unix://`, `tcp://127.0.0.1:<port>` (loopback-only), or a scheme-less path (BC = `unix://`). `OpcuaManager::isSessionManagerRunning()` and `shouldUseSessionManager()` inspect the endpoint kind via `TransportFactory::toUnixPath()`.
+- [x] `php bin/console opcua:session` adapts its startup table (Endpoint label, Socket Mode shown only for Unix endpoints) and skips `mkdir` for TCP endpoints.
+- [x] CI workflow aligned with `opcua-client`: `unit` cross-OS × PHP 8.2–8.5 × Symfony 7.3 / 7.4 / 8.0; `integration` Ubuntu-only with `needs: unit`; `[DOC]` commit skip; `codecov-action` v5 → v6.
+
 ## Planned
 
 .......

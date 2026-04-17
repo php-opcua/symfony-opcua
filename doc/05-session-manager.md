@@ -42,7 +42,7 @@ php bin/console opcua:session \
 | `--timeout` | `600` | Session inactivity timeout in seconds |
 | `--cleanup-interval` | `30` | Interval between expired session checks |
 | `--max-sessions` | `100` | Maximum concurrent OPC UA sessions |
-| `--socket-mode` | `0600` | Unix socket file permissions (octal) |
+| `--socket-mode` | `0600` | Unix socket file permissions (octal). Ignored for `tcp://` endpoints. |
 
 All options can also be configured via YAML config.
 
@@ -68,7 +68,7 @@ php_opcua_symfony_opcua:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `true` | Enable daemon auto-detection |
-| `socket_path` | `%kernel.project_dir%/var/opcua-session-manager.sock` | Unix socket path |
+| `socket_path` | `%kernel.project_dir%/var/opcua-session-manager.sock` (Linux/macOS) — set to `tcp://127.0.0.1:9990` on Windows | IPC endpoint URI: `unix://<path>`, `tcp://127.0.0.1:<port>` (loopback-only), or scheme-less path (= `unix://<path>`) |
 | `timeout` | `600` | Session inactivity timeout (seconds) |
 | `cleanup_interval` | `30` | Expired session check interval |
 | `auth_token` | `null` | Shared secret for daemon IPC |
