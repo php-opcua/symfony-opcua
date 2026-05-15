@@ -190,5 +190,64 @@ describe('PhpOpcuaSymfonyOpcuaBundle', function () {
 
             expect((string) $cacheRef)->toBe('cache.redis');
         });
+
+        it('does not register the logger resolver when no connection declares log_channel', function () {
+            $builder = buildContainer([
+                'connections' => [
+                    'default' => ['endpoint' => 'opc.tcp://localhost:4840'],
+                ],
+            ]);
+
+            $args = $builder->getDefinition(OpcuaManager::class)->getArguments();
+
+            // 5th constructor argument is the loggerResolver — null when no
+            // connection declares a log_channel.
+            expect($args[4])->toBeNull();
+            expect($builder->hasDefinition('php_opcua.logger_resolver'))->toBeFalse();
+            expect($builder->hasDefinition('php_opcua.logger_locator'))->toBeFalse();
+        });
+
+        it('registers a logger resolver when at least one connection declares log_channel', function () {
+            $builder = buildContainer([
+                'connections' => [
+                    'plc-a' => [
+                        'endpoint' => 'opc.tcp://plc-a:4840',
+                        'log_channel' => 'plc-a-channel',
+                    ],
+                    'plc-b' => [
+                        'endpoint' => 'opc.tcp://plc-b:4840',
+                    ],
+                ],
+            ]);
+
+            $args = $builder->getDefinition(OpcuaManager::class)->getArguments();
+
+            expect($args[4])->not->toBeNull();
+            expect((string) $args[4])->toBe('php_opcua.logger_resolver');
+            expect($builder->hasDefinition('php_opcua.logger_resolver'))->toBeTrue();
+            expect($builder->hasDefinition('php_opcua.logger_locator'))->toBeTrue();
+        });
+
+        it('deduplicates log_channel values across connections', function () {
+            $builder = buildContainer([
+                'connections' => [
+                    'plc-a' => [
+                        'endpoint' => 'opc.tcp://plc-a:4840',
+                        'log_channel' => 'shared',
+                    ],
+                    'plc-b' => [
+                        'endpoint' => 'opc.tcp://plc-b:4840',
+                        'log_channel' => 'shared',
+                    ],
+                ],
+            ]);
+
+            $locator = $builder->getDefinition('php_opcua.logger_locator');
+            $map = $locator->getArguments()[0];
+
+            // One entry, not two
+            expect($map)->toHaveCount(1);
+            expect($map)->toHaveKey('shared');
+        });
     });
 });

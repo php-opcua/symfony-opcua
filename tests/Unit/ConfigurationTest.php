@@ -231,4 +231,32 @@ describe('Configuration', function () {
             ]))->toThrow(\Symfony\Component\Config\Definition\Exception\InvalidConfigurationException::class, 'must be configured');
         });
     });
+
+    describe('log_channel (v4.3)', function () {
+
+        it('defaults log_channel to null on a connection', function () {
+            $result = processConfig([
+                'connections' => [
+                    'default' => [
+                        'endpoint' => 'opc.tcp://localhost:4840',
+                    ],
+                ],
+            ]);
+
+            expect($result['connections']['default']['log_channel'])->toBeNull();
+        });
+
+        it('accepts a custom log_channel value', function () {
+            $result = processConfig([
+                'connections' => [
+                    'default' => [
+                        'endpoint' => 'opc.tcp://localhost:4840',
+                        'log_channel' => 'plc-line-a',
+                    ],
+                ],
+            ]);
+
+            expect($result['connections']['default']['log_channel'])->toBe('plc-line-a');
+        });
+    });
 });

@@ -6,15 +6,19 @@ namespace PhpOpcua\SymfonyOpcua;
 
 use PhpOpcua\Client\OpcUaClientInterface;
 use PhpOpcua\SymfonyOpcua\Command\SessionCommand;
+use PhpOpcua\SymfonyOpcua\Logging\LoggerResolverFactory;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use Symfony\Component\Cache\Psr16Cache;
 use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
+use Symfony\Component\DependencyInjection\Argument\ServiceClosureArgument;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\DependencyInjection\ServiceLocator;
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
 
 /**
@@ -120,6 +124,9 @@ class PhpOpcuaSymfonyOpcuaBundle extends AbstractBundle
                             ->integerNode('browse_max_depth')
                                 ->defaultValue(10)
                             ->end()
+                            ->scalarNode('log_channel')
+                                ->defaultNull()
+                            ->end()
                             ->scalarNode('trust_store_path')
                                 ->defaultNull()
                             ->end()
@@ -211,12 +218,15 @@ class PhpOpcuaSymfonyOpcuaBundle extends AbstractBundle
         $services->set('php_opcua.psr16_cache', Psr16Cache::class)
             ->args([new Reference($cachePool)]);
 
+        $loggerResolverRef = $this->registerLoggerResolver($builder, $config['connections']);
+
         $services->set(OpcuaManager::class)
             ->args([
                 $opcuaConfig,
                 new Reference($loggerServiceId),
                 new Reference('php_opcua.psr16_cache'),
                 new Reference(EventDispatcherInterface::class, ContainerInterface::NULL_ON_INVALID_REFERENCE),
+                $loggerResolverRef,
             ])
             ->public();
 
@@ -237,5 +247,44 @@ class PhpOpcuaSymfonyOpcuaBundle extends AbstractBundle
                 new Reference(EventDispatcherInterface::class, ContainerInterface::NULL_ON_INVALID_REFERENCE),
             ])
             ->tag('console.command');
+    }
+
+    private function registerLoggerResolver(ContainerBuilder $builder, array $connections): ?Reference
+    {
+        $channels = [];
+        foreach ($connections as $conn) {
+            $channel = $conn['log_channel'] ?? null;
+            if (is_string($channel) && $channel !== '' && !in_array($channel, $channels, true)) {
+                $channels[] = $channel;
+            }
+        }
+
+        if ($channels === []) {
+            return null;
+        }
+
+        $locatorMap = [];
+        foreach ($channels as $channel) {
+            $locatorMap[$channel] = new ServiceClosureArgument(
+                new Reference(
+                    'monolog.logger.' . $channel,
+                    ContainerInterface::NULL_ON_INVALID_REFERENCE,
+                ),
+            );
+        }
+
+        $locatorId = 'php_opcua.logger_locator';
+        $locatorDef = (new Definition(ServiceLocator::class))
+            ->setArguments([$locatorMap])
+            ->addTag('container.service_locator');
+        $builder->setDefinition($locatorId, $locatorDef);
+
+        $resolverId = 'php_opcua.logger_resolver';
+        $resolverDef = (new Definition(\Closure::class))
+            ->setFactory([LoggerResolverFactory::class, 'create'])
+            ->setArguments([new Reference($locatorId)]);
+        $builder->setDefinition($resolverId, $resolverDef);
+
+        return new Reference($resolverId);
     }
 }

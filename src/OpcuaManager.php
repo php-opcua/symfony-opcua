@@ -13,9 +13,12 @@ use PhpOpcua\Client\TrustStore\FileTrustStore;
 use PhpOpcua\Client\TrustStore\TrustPolicy;
 use PhpOpcua\SessionManager\Client\ManagedClient;
 use PhpOpcua\SessionManager\Ipc\TransportFactory;
+use PhpOpcua\SymfonyOpcua\Logging\TimestampedLogger;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
+use Symfony\Component\Console\Logger\ConsoleLogger;
+use Symfony\Component\Console\Output\OutputInterface;
 
 /**
  * Manages OPC UA client connections within a Symfony application.
@@ -27,18 +30,79 @@ class OpcuaManager
     /** @var array<string, OpcUaClientInterface> */
     protected array $connections = [];
 
+    protected ?LoggerInterface $runtimeLogger = null;
+
     /**
      * @param array $config
      * @param ?LoggerInterface $defaultLogger
      * @param ?CacheInterface $defaultCache
      * @param ?EventDispatcherInterface $defaultEventDispatcher
+     * @param ?\Closure $loggerResolver
      */
     public function __construct(
         protected array $config,
         protected ?LoggerInterface $defaultLogger = null,
         protected ?CacheInterface $defaultCache = null,
         protected ?EventDispatcherInterface $defaultEventDispatcher = null,
+        protected ?\Closure $loggerResolver = null,
     ) {}
+
+    protected function resolveLogger(array $config): ?LoggerInterface
+    {
+        if ($this->runtimeLogger !== null) {
+            return $this->runtimeLogger;
+        }
+
+        if (isset($config['logger']) && $config['logger'] instanceof LoggerInterface) {
+            return $config['logger'];
+        }
+
+        if (!empty($config['log_channel']) && is_string($config['log_channel']) && $this->loggerResolver !== null) {
+            $resolved = ($this->loggerResolver)($config['log_channel']);
+            if ($resolved instanceof LoggerInterface) {
+                return $resolved;
+            }
+        }
+
+        return $this->defaultLogger;
+    }
+
+    public function setLogger(LoggerInterface $logger): self
+    {
+        $this->runtimeLogger = $logger;
+
+        foreach ($this->connections as $client) {
+            if (method_exists($client, 'setLogger')) {
+                $client->setLogger($logger);
+            }
+        }
+
+        return $this;
+    }
+
+    public function useConsoleLogger(
+        OutputInterface $output,
+        array $verbosityMap = [],
+        array $formatLevelMap = [],
+        ?string $dateFormat = 'Y-m-d H:i:s.v',
+    ): self {
+        if (!class_exists(ConsoleLogger::class)) {
+            throw new \RuntimeException('Symfony ConsoleLogger is not available. Install symfony/console.');
+        }
+
+        $logger = new ConsoleLogger($output, $verbosityMap, $formatLevelMap);
+
+        if ($dateFormat !== null) {
+            $logger = new TimestampedLogger($logger, $dateFormat);
+        }
+
+        return $this->setLogger($logger);
+    }
+
+    public function getLogger(): ?LoggerInterface
+    {
+        return $this->runtimeLogger;
+    }
 
     /**
      * Get an OPC UA client connection by name.
@@ -210,10 +274,9 @@ class OpcuaManager
             $builder->setDefaultBrowseMaxDepth((int) $config['browse_max_depth']);
         }
 
-        if (isset($config['logger']) && $config['logger'] instanceof LoggerInterface) {
-            $builder->setLogger($config['logger']);
-        } elseif ($this->defaultLogger !== null) {
-            $builder->setLogger($this->defaultLogger);
+        $logger = $this->resolveLogger($config);
+        if ($logger !== null) {
+            $builder->setLogger($logger);
         }
 
         if (array_key_exists('cache', $config)) {
@@ -309,10 +372,9 @@ class OpcuaManager
             $client->setDefaultBrowseMaxDepth((int) $config['browse_max_depth']);
         }
 
-        if (isset($config['logger']) && $config['logger'] instanceof LoggerInterface) {
-            $client->setLogger($config['logger']);
-        } elseif ($this->defaultLogger !== null) {
-            $client->setLogger($this->defaultLogger);
+        $logger = $this->resolveLogger($config);
+        if ($logger !== null) {
+            $client->setLogger($logger);
         }
 
         if (array_key_exists('cache', $config)) {
