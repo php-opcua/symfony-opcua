@@ -323,18 +323,22 @@ echo $mock->callCount('read'); // 1
 
 ## Documentation
 
-| # | Document | Covers |
-|---|----------|--------|
-| 01 | [Introduction](doc/01-introduction.md) | Overview, requirements, architecture, quick start |
-| 02 | [Installation & Configuration](doc/02-installation.md) | Composer, YAML config, connections, session manager |
-| 03 | [Usage](doc/03-usage.md) | Reading, writing, browsing, methods, subscriptions, history |
-| 04 | [Connections](doc/04-connections.md) | Named, ad-hoc, switching, disconnect, dependency injection |
-| 05 | [Session Manager](doc/05-session-manager.md) | Daemon, console command, systemd, architecture |
-| 06 | [Logging & Caching](doc/06-logging-caching.md) | PSR-3/PSR-16, Symfony integration, per-call cache control |
-| 07 | [Security](doc/07-security.md) | Policies, modes, certificates, authentication |
-| 08 | [Testing](doc/08-testing.md) | MockClient, DataValue factories, unit and integration tests |
-| 09 | [Examples](doc/09-examples.md) | Complete code examples for all features |
-| 10 | [Auto-Publish & Monitoring](doc/10-auto-publish.md) | Auto-publish, auto-connect, event listeners, real-world use case |
+Full documentation is available in [`docs/`](docs/index.md). Highlights:
+
+| Section | Covers |
+|---------|--------|
+| **Getting started** — [Overview](docs/overview.md) · [Installation](docs/getting-started/installation.md) · [Quick start](docs/getting-started/quick-start.md) · [How symfony-opcua fits](docs/getting-started/how-symfony-opcua-fits.md) · [Upgrading](docs/getting-started/upgrading.md) | Concepts, install, first connection |
+| **Configuration** — [Bundle YAML](docs/configuration/bundle-yaml.md) · [Connections](docs/configuration/connections.md) · [Environment variables](docs/configuration/environment-variables.md) · [Security](docs/configuration/security.md) · [Session manager](docs/configuration/session-manager.md) · [Parameters & overrides](docs/configuration/parameters-and-overrides.md) | YAML, env, named connections |
+| **Using the client** — [Manager vs interface](docs/using-the-client/manager-vs-interface.md) · [Named connections](docs/using-the-client/named-connections.md) · [Ad-hoc connections](docs/using-the-client/ad-hoc-connections.md) · [Connection lifecycle](docs/using-the-client/connection-lifecycle.md) · [Using builders](docs/using-the-client/using-builders.md) | Manager service, DI, lifecycle |
+| **Operations** — [Reading](docs/operations/reading.md) · [Writing](docs/operations/writing.md) · [Browsing](docs/operations/browsing.md) · [Method calls](docs/operations/method-calls.md) · [Subscriptions](docs/operations/subscriptions.md) · [History](docs/operations/history.md) | Read/write, browse, subscribe, history |
+| **Session manager** — [Overview](docs/session-manager/overview.md) · [Starting the daemon](docs/session-manager/starting-the-daemon.md) · [Auto-publish](docs/session-manager/auto-publish.md) · [Production supervisor](docs/session-manager/production-supervisor.md) · [Monitoring](docs/session-manager/monitoring-the-daemon.md) | Persistent sessions via daemon |
+| **Events** — [Overview](docs/events/overview.md) · [Connection events](docs/events/connection-events.md) · [Data events](docs/events/data-events.md) · [Alarm events](docs/events/alarm-events.md) · [Async listeners with Messenger](docs/events/async-listeners-with-messenger.md) | PSR-14 + Symfony EventDispatcher |
+| **Observability** — [Logging](docs/observability/logging.md) · [Caching](docs/observability/caching.md) · [Debugging](docs/observability/debugging.md) · [Profiler & data collectors](docs/observability/profiler-and-data-collectors.md) | Logs, cache, profiler |
+| **Security** — [Policies & modes](docs/security/policies-and-modes.md) · [Credentials](docs/security/credentials.md) · [Certificates](docs/security/certificates.md) · [Trust store](docs/security/trust-store.md) | Security policies, certs, trust |
+| **Testing** — [PHPUnit & Pest setup](docs/testing/phpunit-and-pest-setup.md) · [Mocking the manager](docs/testing/mocking-the-manager.md) · [Using MockClient](docs/testing/using-mock-client.md) · [Kernel tests](docs/testing/kernel-tests.md) | Unit + kernel tests |
+| **Integrations** — [Messenger](docs/integrations/messenger.md) · [Mercure](docs/integrations/mercure.md) · [Doctrine](docs/integrations/doctrine.md) · [Twig](docs/integrations/twig.md) · [Console & scheduler](docs/integrations/console-and-scheduler.md) · [Notifier](docs/integrations/notifier.md) | Symfony ecosystem |
+| **Reference** — [OpcuaManager API](docs/reference/opcua-manager-api.md) · [Bundle services](docs/reference/bundle-services.md) · [Console commands](docs/reference/console-commands.md) · [Exceptions](docs/reference/exceptions.md) | Public API |
+| **Recipes** — [Persistent tag history](docs/recipes/persistent-tag-history.md) · [Alarm routing](docs/recipes/alarm-routing.md) · [Mercure dashboard](docs/recipes/mercure-realtime-dashboard.md) · [Multi-plant tenant](docs/recipes/multi-plant-tenant.md) · [Companion specs](docs/recipes/using-companion-specs.md) · [Dev with Docker](docs/recipes/dev-with-docker.md) · [Production deployment](docs/recipes/production-deployment.md) | Task-oriented walkthroughs |
 
 ## Testing
 

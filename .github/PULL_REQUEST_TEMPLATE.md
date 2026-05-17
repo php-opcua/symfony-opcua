@@ -25,7 +25,7 @@ A brief description of what this PR does.
 - [ ] No comments inside function bodies
 - [ ] `CHANGELOG.md` updated
 - [ ] `README.md` updated (if adding a major feature)
-- [ ] Documentation in `doc/` updated (if applicable)
+- [ ] Documentation in `docs/` updated (if applicable)
 
 ## Related Issues
 

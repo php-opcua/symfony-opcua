@@ -1,0 +1,75 @@
+# Documentation Index
+
+- Getting started
+  - [Overview](./overview.md)
+  - [Installation](./getting-started/installation.md)
+  - [Quick start](./getting-started/quick-start.md)
+  - [How symfony-opcua fits](./getting-started/how-symfony-opcua-fits.md)
+  - [Upgrading](./getting-started/upgrading.md)
+- Configuration
+  - [Bundle YAML](./configuration/bundle-yaml.md)
+  - [Connections](./configuration/connections.md)
+  - [Environment variables](./configuration/environment-variables.md)
+  - [Security](./configuration/security.md)
+  - [Session manager](./configuration/session-manager.md)
+  - [Parameters and overrides](./configuration/parameters-and-overrides.md)
+- Using the client
+  - [Manager vs interface](./using-the-client/manager-vs-interface.md)
+  - [Named connections](./using-the-client/named-connections.md)
+  - [Ad-hoc connections](./using-the-client/ad-hoc-connections.md)
+  - [Connection lifecycle](./using-the-client/connection-lifecycle.md)
+  - [Using builders](./using-the-client/using-builders.md)
+- Operations
+  - [Reading](./operations/reading.md)
+  - [Writing](./operations/writing.md)
+  - [Browsing](./operations/browsing.md)
+  - [Method calls](./operations/method-calls.md)
+  - [Subscriptions](./operations/subscriptions.md)
+  - [History](./operations/history.md)
+- Session manager
+  - [Overview](./session-manager/overview.md)
+  - [Starting the daemon](./session-manager/starting-the-daemon.md)
+  - [Auto-publish](./session-manager/auto-publish.md)
+  - [Production supervisor](./session-manager/production-supervisor.md)
+  - [Monitoring the daemon](./session-manager/monitoring-the-daemon.md)
+- Events
+  - [Overview](./events/overview.md)
+  - [Connection events](./events/connection-events.md)
+  - [Data events](./events/data-events.md)
+  - [Alarm events](./events/alarm-events.md)
+  - [Async listeners with Messenger](./events/async-listeners-with-messenger.md)
+- Observability
+  - [Logging](./observability/logging.md)
+  - [Caching](./observability/caching.md)
+  - [Debugging](./observability/debugging.md)
+  - [Profiler and data collectors](./observability/profiler-and-data-collectors.md)
+- Security
+  - [Policies and modes](./security/policies-and-modes.md)
+  - [Credentials](./security/credentials.md)
+  - [Certificates](./security/certificates.md)
+  - [Trust store](./security/trust-store.md)
+- Testing
+  - [PHPUnit and Pest setup](./testing/phpunit-and-pest-setup.md)
+  - [Mocking the manager](./testing/mocking-the-manager.md)
+  - [Using MockClient](./testing/using-mock-client.md)
+  - [Kernel tests](./testing/kernel-tests.md)
+- Integrations
+  - [Messenger](./integrations/messenger.md)
+  - [Mercure](./integrations/mercure.md)
+  - [Doctrine](./integrations/doctrine.md)
+  - [Twig](./integrations/twig.md)
+  - [Console and scheduler](./integrations/console-and-scheduler.md)
+  - [Notifier](./integrations/notifier.md)
+- Reference
+  - [OpcuaManager API](./reference/opcua-manager-api.md)
+  - [Bundle services](./reference/bundle-services.md)
+  - [Console commands](./reference/console-commands.md)
+  - [Exceptions](./reference/exceptions.md)
+- Recipes
+  - [Persistent tag history](./recipes/persistent-tag-history.md)
+  - [Alarm routing](./recipes/alarm-routing.md)
+  - [Mercure real-time dashboard](./recipes/mercure-realtime-dashboard.md)
+  - [Multi-plant tenant](./recipes/multi-plant-tenant.md)
+  - [Using companion specs](./recipes/using-companion-specs.md)
+  - [Dev with Docker](./recipes/dev-with-docker.md)
+  - [Production deployment](./recipes/production-deployment.md)
